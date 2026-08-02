@@ -11,6 +11,7 @@ export interface SeedNode {
   name: string;
   module: string;
   kind: string; // class | abstract | interface | struct
+  lang: string; // python | typescript | go
   doc: string; // the class docstring
   attributes: [string, string][]; // [name, type]
   methods: SeedMethod[];

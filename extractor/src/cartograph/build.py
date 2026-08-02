@@ -7,6 +7,7 @@ forward slashes, so a board is portable across machines and the node key
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from cartograph import classgraph
@@ -18,6 +19,17 @@ _SKIP_DIRS = frozenset(
     {".git", ".venv", "venv", "node_modules", "__pycache__", ".mypy_cache",
      ".ruff_cache", ".pytest_cache", "dist", "build", ".tox"}
 )
+
+# File extension -> language label, stamped on every node so resolution can stay
+# within a language and cross-language links can be found between languages.
+_LANG_OF = {
+    ".py": "python",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".mts": "typescript",
+    ".cts": "typescript",
+    ".go": "go",
+}
 
 
 def build_seed(root: Path) -> Seed:
@@ -37,7 +49,8 @@ def build_seed(root: Path) -> Seed:
         except (OSError, UnicodeDecodeError):
             continue
         file_nodes, file_refs = extractor(source, module)
-        nodes.extend(file_nodes)
+        lang = _LANG_OF.get(path.suffix, "")
+        nodes.extend(replace(n, lang=lang) for n in file_nodes)
         refs.extend(file_refs)
 
     nodes.sort(key=lambda n: n.key)

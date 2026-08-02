@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from cartograph.frontends import python_ast
+from cartograph.frontends import python_ast, typescript_ts
 from cartograph.model import Node, Reference
 
 Extractor = Callable[[str, str], tuple[list[Node], list[Reference]]]
@@ -36,3 +36,4 @@ def supported_extensions() -> frozenset[str]:
 
 
 register(python_ast.EXTENSIONS, python_ast.extract)
+register(typescript_ts.EXTENSIONS, typescript_ts.extract)

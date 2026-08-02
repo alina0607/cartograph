@@ -20,6 +20,7 @@ from cartograph.model import (
     AGGREGATION,
     ASSOCIATION,
     COMPOSITION,
+    CONTRACT,
     DEPENDENCY,
     IMPLEMENTS,
     INHERITS,
@@ -39,6 +40,7 @@ def resolve(nodes: list[Node], refs: list[Reference]) -> tuple[Relation, ...]:
         by_name[n.name].append(n.key)
     kind_of = {n.key: n.kind for n in nodes}
     module_of = {n.key: n.module for n in nodes}
+    lang_of = {n.key: n.lang for n in nodes}
 
     structural: list[Relation] = []
     structural_pairs: set[tuple[str, str]] = set()
@@ -49,7 +51,7 @@ def resolve(nodes: list[Node], refs: list[Reference]) -> tuple[Relation, ...]:
         if ref.kind == DEPENDENCY:
             dep_refs.append(ref)
             continue
-        dst = _resolve_one(ref, by_name, module_of)
+        dst = _resolve_one(ref, by_name, module_of, lang_of)
         if dst is None or dst == ref.src:
             continue
         kind = IMPLEMENTS if ref.kind == INHERITS and kind_of.get(dst) == INTERFACE else ref.kind
@@ -62,7 +64,7 @@ def resolve(nodes: list[Node], refs: list[Reference]) -> tuple[Relation, ...]:
 
     edges = structural
     for ref in dep_refs:
-        dst = _resolve_one(ref, by_name, module_of)
+        dst = _resolve_one(ref, by_name, module_of, lang_of)
         if dst is None or dst == ref.src or (ref.src, dst) in structural_pairs:
             continue
         if _pkg_dir(module_of[ref.src]) != _pkg_dir(module_of.get(dst, "")):
@@ -74,23 +76,52 @@ def resolve(nodes: list[Node], refs: list[Reference]) -> tuple[Relation, ...]:
         edges.append(Relation(src=ref.src, dst=dst, kind=DEPENDENCY))
 
     edges = _drop_inherited_has_a(edges)
+    edges += _contract_edges(nodes)
     edges.sort(key=lambda r: (r.src, r.dst, r.kind, r.lazy))
     return tuple(edges)
 
 
 def _resolve_one(
-    ref: Reference, by_name: dict[str, list[str]], module_of: dict[str, str]
+    ref: Reference,
+    by_name: dict[str, list[str]],
+    module_of: dict[str, str],
+    lang_of: dict[str, str],
 ) -> str | None:
     candidates = by_name.get(ref.dst_name)
     if not candidates:
         return None
-    if len(candidates) == 1:
-        return candidates[0]
+    # A structural edge (inherits/has-a/...) stays within one language — a Python class
+    # never extends a TypeScript one. Cross-language links are handled separately.
+    src_lang = lang_of.get(ref.src, "")
+    pool = [c for c in candidates if lang_of.get(c, "") == src_lang] if src_lang else candidates
+    if not pool:
+        return None
+    if len(pool) == 1:
+        return pool[0]
     src_module = module_of.get(ref.src)
-    same_module = [c for c in candidates if module_of.get(c) == src_module]
+    same_module = [c for c in pool if module_of.get(c) == src_module]
     if len(same_module) == 1:
         return same_module[0]
-    return min(same_module or candidates)
+    return min(same_module or pool)
+
+
+def _contract_edges(nodes: list[Node]) -> list[Relation]:
+    """Cross-language contracts: a type named the same in two languages is the same concept
+    across the boundary (e.g. a ``User`` model in both a Python service and its TS client)."""
+    by_name: dict[str, list[Node]] = defaultdict(list)
+    for n in nodes:
+        by_name[n.name].append(n)
+    out: list[Relation] = []
+    for group in by_name.values():
+        langs = {n.lang for n in group if n.lang}
+        if len(langs) < 2:
+            continue
+        keys = sorted(group, key=lambda n: n.key)
+        for i in range(len(keys)):
+            for j in range(i + 1, len(keys)):
+                if keys[i].lang != keys[j].lang:
+                    out.append(Relation(src=keys[i].key, dst=keys[j].key, kind=CONTRACT))
+    return out
 
 
 def _drop_inherited_has_a(edges: list[Relation]) -> list[Relation]:

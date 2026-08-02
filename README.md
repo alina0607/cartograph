@@ -68,8 +68,8 @@ and hit **scan**.
 ## Roadmap
 
 - [x] Python frontend, six UML relationships, interactive canvas, study-notes layer
-- [ ] TypeScript frontend
-- [ ] Cross-language contracts (a concept shared between, e.g., a Python and a TypeScript type)
+- [x] TypeScript frontend
+- [x] Cross-language contracts (a concept shared between, e.g., a Python and a TypeScript type)
 - [ ] Go frontend
 
 ## License

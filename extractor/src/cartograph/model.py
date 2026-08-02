@@ -50,6 +50,7 @@ class Node:
     name: str
     module: str
     kind: str  # CLASS | ABSTRACT | INTERFACE | STRUCT
+    lang: str = ""  # python | typescript | go — set by the build from the file extension
     doc: str = ""  # the class docstring
     attributes: tuple[tuple[str, str], ...] = ()  # (name, type-as-written)
     methods: tuple[Method, ...] = ()
@@ -90,6 +91,7 @@ class Seed:
                     "name": n.name,
                     "module": n.module,
                     "kind": n.kind,
+                    "lang": n.lang,
                     "doc": n.doc,
                     "attributes": [list(a) for a in n.attributes],
                     "methods": [
