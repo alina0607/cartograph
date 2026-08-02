@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# cartograph <folder> — draw a Python (or, later, TS/Go) project on the canvas.
+# Ensures the dev server is up, then opens the board pointed at that folder.
+set -euo pipefail
+
+PORT="${CODEBOARD_PORT:-5188}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="$SCRIPT_DIR/../app"
+
+if [ $# -lt 1 ]; then
+  echo "usage: cartograph <folder>"
+  exit 1
+fi
+
+if [ ! -d "$1" ]; then
+  echo "not a folder: $1"
+  exit 1
+fi
+folder="$(cd "$1" && pwd)"  # absolute path — the extractor needs one
+
+# Start the dev server if it is not already answering on PORT.
+if ! curl -sf "http://localhost:$PORT/" >/dev/null 2>&1; then
+  echo "starting cartograph server on :$PORT …"
+  (cd "$APP_DIR" && npm run dev -- --port "$PORT" >/tmp/cartograph-server.log 2>&1 &)
+  for _ in $(seq 1 60); do
+    curl -sf "http://localhost:$PORT/" >/dev/null 2>&1 && break
+    sleep 0.25
+  done
+fi
+
+enc="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$folder")"
+open "http://localhost:$PORT/?scan=$enc"
+echo "drawing $folder"
