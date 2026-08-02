@@ -59,7 +59,20 @@ export class Store {
   }
 
   setEdgeBend(key: string, bend: [number, number]): void {
-    this.overlay.edges[key] = { bend: [Math.round(bend[0]), Math.round(bend[1])] };
+    const prev = this.overlay.edges[key];
+    this.overlay.edges[key] = { ...prev, bend: [Math.round(bend[0]), Math.round(bend[1])] };
+    this.scheduleSave();
+  }
+
+  // Effective routing for one line: its own override, else the global default.
+  edgeModeFor(key: string): "curved" | "orthogonal" {
+    return this.overlay.edges[key]?.mode ?? this.edgeMode();
+  }
+
+  toggleEdgeModeFor(key: string): void {
+    const next = this.edgeModeFor(key) === "curved" ? "orthogonal" : "curved";
+    const prev = this.overlay.edges[key];
+    this.overlay.edges[key] = { bend: prev?.bend ?? [0, 0], mode: next };
     this.scheduleSave();
   }
 

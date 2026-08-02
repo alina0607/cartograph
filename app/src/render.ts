@@ -5,7 +5,7 @@
 import { borderPoint, dims, edgeGeom, metrics, orthogonalGeom, type Box } from "./geometry";
 import { edgeKey, edgeStyle } from "./edge";
 import { renderGroups, renderImages, renderNotes, wrap } from "./renderItems";
-import type { SeedNode } from "./model";
+import type { Point, SeedNode } from "./model";
 import type { Store } from "./store";
 
 const { LINE_H, TITLE_H, PAD } = metrics;
@@ -43,14 +43,16 @@ export function renderScene(store: Store): string {
     const key = edgeKey(rel);
     const bend = store.edgeBend(key);
     const geom =
-      store.edgeMode() === "orthogonal" ? orthogonalGeom(src, dst, bend) : edgeGeom(src, dst, bend);
+      store.edgeModeFor(key) === "orthogonal"
+        ? orthogonalGeom(src, dst, bend)
+        : edgeGeom(src, dst, bend);
     const st = edgeStyle(rel);
     const dash = st.dash ? ` stroke-dasharray="${st.dash}"` : "";
-    const ms = st.markerStart ? ` marker-start="url(#${st.markerStart})"` : "";
-    const me = st.markerEnd ? ` marker-end="url(#${st.markerEnd})"` : "";
     edgeParts.push(
-      `<path d="${geom.path}" fill="none" stroke="${st.color}" stroke-width="1.6"${dash}${ms}${me}/>`,
+      `<path d="${geom.path}" fill="none" stroke="${st.color}" stroke-width="1.8"${dash}/>`,
     );
+    if (st.markerEnd) edgeParts.push(decoration(st.markerEnd, geom.p1, geom.dirEnd, st.color));
+    if (st.markerStart) edgeParts.push(decoration(st.markerStart, geom.p0, geom.dirStart, st.color));
     handleParts.push(
       `<circle class="eh" data-edge="${attr(key)}" cx="${round(geom.handle.x)}" cy="${round(
         geom.handle.y,
@@ -195,52 +197,65 @@ function leftText(x: number, y: number, text: string, color: string): string {
   return `<text x="${round(x)}" y="${round(y)}" fill="${color}">${esc(text)}</text>`;
 }
 
-// Colours are baked into each marker (not context-stroke, which some engines drop,
-// leaving the hollow triangle/diamond/arrow invisible — the "lines with no ends" bug).
 function defs(): string {
-  const bg = "#ffffff"; // hollow markers read as white against the frosted cards
-  const P = "#7c5cf0"; // inherits / implements
-  const G = "#0f9d8f"; // association
-  const S = "#6b7280"; // dependency
-  const D = "#d98324"; // composition / aggregation
-  const tri = `<path d="M0,0 L10,5 L0,10 Z" fill="${bg}" stroke="${P}" stroke-width="1.4"/>`;
-  const arrowG = `<path d="M0,0 L10,5 L0,10" fill="none" stroke="${G}" stroke-width="1.6"/>`;
-  const arrowS = `<path d="M0,0 L10,5 L0,10" fill="none" stroke="${S}" stroke-width="1.6"/>`;
-  const diaFill = `<path d="M0,5 L5,0 L10,5 L5,10 Z" fill="${D}" stroke="${D}" stroke-width="1.2"/>`;
-  const diaOpen = `<path d="M0,5 L5,0 L10,5 L5,10 Z" fill="${bg}" stroke="${D}" stroke-width="1.3"/>`;
   // Soft peach→pink card fill and a gentle drop shadow so classes lift off the canvas.
   const cardGrad =
     `<linearGradient id="card" x1="0" y1="0" x2="0" y2="1">` +
-    `<stop offset="0" stop-color="#fff3e6"/><stop offset="1" stop-color="#ffdcec"/></linearGradient>`;
+    `<stop offset="0" stop-color="#ffe4c2"/><stop offset="0.5" stop-color="#ffd0d6"/>` +
+    `<stop offset="1" stop-color="#ffbcdd"/></linearGradient>`;
   const shadow =
-    `<filter id="cardshadow" x="-20%" y="-20%" width="140%" height="140%">` +
-    `<feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#c98bb0" flood-opacity="0.3"/></filter>`;
-  return (
-    `<defs>` +
-    cardGrad +
-    shadow +
-    marker("m-tri", 15, 10, 5, tri) +
-    marker("m-arrow-green", 14, 9, 5, arrowG) +
-    marker("m-arrow-slate", 14, 9, 5, arrowS) +
-    marker("m-diamond-fill", 18, 0, 5, diaFill, true) +
-    marker("m-diamond-open", 18, 0, 5, diaOpen, true) +
-    `</defs>`
-  );
+    `<filter id="cardshadow" x="-25%" y="-25%" width="150%" height="150%">` +
+    `<feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#b96fa8" flood-opacity="0.34"/></filter>`;
+  return `<defs>${cardGrad}${shadow}</defs>`;
 }
 
-function marker(
-  id: string,
-  size: number,
-  refX: number,
-  refY: number,
-  body: string,
-  startReverse = false,
-): string {
-  const orient = startReverse ? "auto-start-reverse" : "auto";
-  return (
-    `<marker id="${id}" markerUnits="userSpaceOnUse" markerWidth="${size}" markerHeight="${size}" ` +
-    `viewBox="0 0 10 10" refX="${refX}" refY="${refY}" orient="${orient}">${body}</marker>`
-  );
+// Endpoint markers are drawn explicitly (not via <marker>) so they are always visible
+// and correctly oriented, in both curved and orthogonal routing. `dir` points along the
+// line at that endpoint. Ids match edgeStyle: m-tri, m-arrow-*, m-diamond-fill/open.
+function decoration(id: string, pt: Point, dir: Point, color: string): string {
+  const px = -dir.y;
+  const py = dir.x; // perpendicular
+  if (id === "m-tri") {
+    const L = 14;
+    const W = 7.5;
+    const b = { x: pt.x - dir.x * L, y: pt.y - dir.y * L };
+    return poly(
+      [pt, { x: b.x + px * W, y: b.y + py * W }, { x: b.x - px * W, y: b.y - py * W }],
+      "#fff",
+      color,
+      1.5,
+    );
+  }
+  if (id === "m-arrow-green" || id === "m-arrow-slate") {
+    const L = 12;
+    const W = 6.5;
+    const b = { x: pt.x - dir.x * L, y: pt.y - dir.y * L };
+    const a1 = { x: b.x + px * W, y: b.y + py * W };
+    const a2 = { x: b.x - px * W, y: b.y - py * W };
+    return (
+      `<path d="M ${round(a1.x)} ${round(a1.y)} L ${round(pt.x)} ${round(pt.y)} ` +
+      `L ${round(a2.x)} ${round(a2.y)}" fill="none" stroke="${color}" stroke-width="1.9"/>`
+    );
+  }
+  if (id === "m-diamond-fill" || id === "m-diamond-open") {
+    const Ld = 17;
+    const Wd = 7.5;
+    const back = { x: pt.x + dir.x * Ld, y: pt.y + dir.y * Ld };
+    const mid = { x: pt.x + dir.x * (Ld / 2), y: pt.y + dir.y * (Ld / 2) };
+    const fill = id === "m-diamond-fill" ? color : "#fff";
+    return poly(
+      [pt, { x: mid.x + px * Wd, y: mid.y + py * Wd }, back, { x: mid.x - px * Wd, y: mid.y - py * Wd }],
+      fill,
+      color,
+      1.4,
+    );
+  }
+  return "";
+}
+
+function poly(pts: Point[], fill: string, stroke: string, sw: number): string {
+  const p = pts.map((q) => `${round(q.x)},${round(q.y)}`).join(" ");
+  return `<polygon points="${p}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>`;
 }
 
 interface Bounds {

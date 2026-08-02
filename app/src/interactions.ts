@@ -91,6 +91,11 @@ export function wireInteractions(
         store.setEdgeBend(key, [startBend[0] + (p.x - start.x), startBend[1] + (p.y - start.y)]);
         rerender();
       };
+      onClick = () => {
+        // A click (no drag) on a line's dot flips just that line between curved and 90°.
+        store.toggleEdgeModeFor(key);
+        rerender();
+      };
     } else if (docnote) {
       // A class's auto docstring card. Its default position isn't stored, so read the
       // current corner off the DOM rather than from the store.

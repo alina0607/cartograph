@@ -104,6 +104,15 @@ export interface EdgeGeom {
   handle: Point; // the on-curve midpoint the user drags
   p0: Point;
   p1: Point;
+  dirStart: Point; // unit vector leaving the source box (for the owner-end marker)
+  dirEnd: Point; // unit vector arriving at the destination box (for the arrow/triangle)
+}
+
+function unit(from: Point, to: Point): Point {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const len = Math.hypot(dx, dy) || 1;
+  return { x: dx / len, y: dy / len };
 }
 
 // A quadratic curve from src box to dst box that passes through M = mid + bend at t=0.5.
@@ -116,7 +125,7 @@ export function edgeGeom(src: Box, dst: Box, bend: [number, number]): EdgeGeom {
   const p1 = borderPoint(dst, M);
   const ctrl: Point = { x: 2 * M.x - (p0.x + p1.x) / 2, y: 2 * M.y - (p0.y + p1.y) / 2 };
   const path = `M ${r(p0.x)} ${r(p0.y)} Q ${r(ctrl.x)} ${r(ctrl.y)} ${r(p1.x)} ${r(p1.y)}`;
-  return { path, handle: M, p0, p1 };
+  return { path, handle: M, p0, p1, dirStart: unit(p0, ctrl), dirEnd: unit(ctrl, p1) };
 }
 
 // Right-angle ("orthogonal") routing with rounded corners, like an architecture diagram.
@@ -145,7 +154,16 @@ export function orthogonalGeom(src: Box, dst: Box, bend: [number, number]): Edge
     corners = [{ x: p0.x, y: my }, { x: p1.x, y: my }];
     handle = { x: (p0.x + p1.x) / 2, y: my };
   }
-  return { path: roundedPath([p0, ...corners, p1], R), handle, p0, p1 };
+  const c0 = corners[0]!;
+  const cN = corners[corners.length - 1]!;
+  return {
+    path: roundedPath([p0, ...corners, p1], R),
+    handle,
+    p0,
+    p1,
+    dirStart: unit(p0, c0),
+    dirEnd: unit(cN, p1),
+  };
 }
 
 // A polyline through `pts` with each interior corner rounded by radius `r`.

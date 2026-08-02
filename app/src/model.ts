@@ -41,10 +41,11 @@ export interface BoxOverlay {
   y: number;
 }
 
-// A line's curvature: the offset of its on-curve midpoint handle from the straight
-// line's midpoint. Relative (not absolute) so the bend follows when either box moves.
+// A line's curvature (offset of its handle from the straight midpoint, relative so it
+// follows when either box moves) plus an optional per-line routing override.
 export interface EdgeOverlay {
   bend: [number, number];
+  mode?: "curved" | "orthogonal";
 }
 
 // Canvas viewport: world = screen translated by pan, scaled by zoom.
