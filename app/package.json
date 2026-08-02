@@ -1,0 +1,20 @@
+{
+  "name": "cartograph-app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "cartograph's interactive UML/dependency study canvas",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "lint": "tsc --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.7",
+    "vitest": "^2.1.8"
+  }
+}

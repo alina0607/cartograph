@@ -1,0 +1,152 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "key": "shapes.py#Canvas",
+      "name": "Canvas",
+      "module": "shapes.py",
+      "kind": "class",
+      "doc": "A surface that owns shapes and paints them on a background.",
+      "attributes": [
+        [
+          "shapes",
+          "list[Shape]"
+        ],
+        [
+          "background",
+          "Color"
+        ]
+      ],
+      "methods": [
+        {
+          "name": "__init__",
+          "doc": "",
+          "source": "def __init__(self) -> None:\n        self.shapes: list[Shape] = []\n        self.background: Color = Color()"
+        },
+        {
+          "name": "add",
+          "doc": "Add a shape to the canvas so it will be drawn.",
+          "source": "def add(self, s: Shape) -> None:\n        \"\"\"Add a shape to the canvas so it will be drawn.\"\"\"\n        self.shapes.append(s)"
+        }
+      ]
+    },
+    {
+      "key": "shapes.py#Circle",
+      "name": "Circle",
+      "module": "shapes.py",
+      "kind": "class",
+      "doc": "",
+      "attributes": [
+        [
+          "radius",
+          ""
+        ]
+      ],
+      "methods": [
+        {
+          "name": "__init__",
+          "doc": "",
+          "source": "def __init__(self, r: float) -> None:\n        self.radius = r"
+        },
+        {
+          "name": "area",
+          "doc": "",
+          "source": "def area(self) -> float:\n        return 3.14 * self.radius * self.radius"
+        },
+        {
+          "name": "draw",
+          "doc": "",
+          "source": "def draw(self) -> None: ..."
+        }
+      ]
+    },
+    {
+      "key": "shapes.py#Color",
+      "name": "Color",
+      "module": "shapes.py",
+      "kind": "class",
+      "doc": "",
+      "attributes": [
+        [
+          "r",
+          "int"
+        ],
+        [
+          "g",
+          "int"
+        ],
+        [
+          "b",
+          "int"
+        ]
+      ],
+      "methods": []
+    },
+    {
+      "key": "shapes.py#Drawable",
+      "name": "Drawable",
+      "module": "shapes.py",
+      "kind": "interface",
+      "doc": "",
+      "attributes": [],
+      "methods": [
+        {
+          "name": "draw",
+          "doc": "",
+          "source": "def draw(self) -> None: ..."
+        }
+      ]
+    },
+    {
+      "key": "shapes.py#Shape",
+      "name": "Shape",
+      "module": "shapes.py",
+      "kind": "abstract",
+      "doc": "",
+      "attributes": [
+        [
+          "name",
+          "str"
+        ]
+      ],
+      "methods": [
+        {
+          "name": "__init__",
+          "doc": "",
+          "source": "def __init__(self) -> None:\n        self.name = \"\""
+        },
+        {
+          "name": "area",
+          "doc": "",
+          "source": "def area(self) -> float: ..."
+        }
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "src": "shapes.py#Canvas",
+      "dst": "shapes.py#Color",
+      "kind": "association",
+      "lazy": false
+    },
+    {
+      "src": "shapes.py#Canvas",
+      "dst": "shapes.py#Shape",
+      "kind": "aggregation",
+      "lazy": false
+    },
+    {
+      "src": "shapes.py#Circle",
+      "dst": "shapes.py#Drawable",
+      "kind": "implements",
+      "lazy": false
+    },
+    {
+      "src": "shapes.py#Circle",
+      "dst": "shapes.py#Shape",
+      "kind": "inherits",
+      "lazy": false
+    }
+  ]
+}

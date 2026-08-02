@@ -1,0 +1,124 @@
+// Pure geometry: box sizing/formatting and the edge curve. No DOM, so it is unit-tested.
+
+import type { Point, SeedNode } from "./model";
+
+const CHAR_W = 6.9; // width of one monospace char at our font size
+const LINE_H = 16;
+const TITLE_H = 24;
+const PAD = 8;
+const MIN_W = 96;
+
+export interface MethodLine {
+  name: string; // the raw method name, used to open its detail popup
+  label: string; // formatted "+ name()"
+}
+
+export interface BoxContent {
+  stereotype: string; // «interface» / «struct» / "" — shown above the name
+  title: string;
+  attrs: string[]; // formatted "+ name: type"
+  methods: MethodLine[];
+  italic: boolean; // abstract/interface names render italic (UML convention)
+}
+
+export interface BoxDims extends BoxContent {
+  w: number;
+  h: number;
+  collapsed: boolean;
+  hint: string; // shown when collapsed: "A fields · M methods"
+}
+
+// UML visibility from Python-ish naming: dunder = public, _x protected, __x private.
+function vis(name: string): string {
+  if (name.startsWith("__") && name.endsWith("__")) return "+";
+  if (name.startsWith("__")) return "-";
+  if (name.startsWith("_")) return "#";
+  return "+";
+}
+
+export function content(node: SeedNode): BoxContent {
+  const attrs = node.attributes.map(([n, t]) => (t ? `${vis(n)} ${n}: ${t}` : `${vis(n)} ${n}`));
+  const methods = node.methods.map((m) => ({ name: m.name, label: `${vis(m.name)} ${m.name}()` }));
+  const stereotype =
+    node.kind === "interface" ? "«interface»" : node.kind === "struct" ? "«struct»" : "";
+  return {
+    stereotype,
+    title: node.name,
+    attrs,
+    methods,
+    italic: node.kind === "abstract" || node.kind === "interface",
+  };
+}
+
+export function dims(node: SeedNode, collapsed = false): BoxDims {
+  const c = content(node);
+  const hint = `${c.attrs.length} field${plural(c.attrs.length)} · ${c.methods.length} method${plural(
+    c.methods.length,
+  )}`;
+  const stereoH = c.stereotype ? LINE_H : 0;
+  if (collapsed) {
+    const longest = [c.stereotype, c.title, hint].reduce((m, s) => Math.max(m, s.length), 0);
+    const w = Math.max(MIN_W, Math.round(longest * CHAR_W) + PAD * 2);
+    return { ...c, w, h: stereoH + TITLE_H + PAD + LINE_H + PAD, collapsed, hint };
+  }
+  const lines = [c.stereotype, c.title, ...c.attrs, ...c.methods.map((m) => m.label)].filter(Boolean);
+  const longest = lines.reduce((m, s) => Math.max(m, s.length), 0);
+  const w = Math.max(MIN_W, Math.round(longest * CHAR_W) + PAD * 2);
+  const h =
+    stereoH + TITLE_H + PAD + c.attrs.length * LINE_H + PAD + c.methods.length * LINE_H + PAD;
+  return { ...c, w, h, collapsed, hint };
+}
+
+function plural(n: number): string {
+  return n === 1 ? "" : "s";
+}
+
+export const metrics = { CHAR_W, LINE_H, TITLE_H, PAD };
+
+export interface Box {
+  cx: number;
+  cy: number;
+  w: number;
+  h: number;
+}
+
+export function midpoint(a: Point, b: Point): Point {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
+// Where the segment from the box centre toward `toward` exits the box rectangle.
+export function borderPoint(box: Box, toward: Point): Point {
+  const dx = toward.x - box.cx;
+  const dy = toward.y - box.cy;
+  if (dx === 0 && dy === 0) return { x: box.cx, y: box.cy + box.h / 2 };
+  const hw = box.w / 2;
+  const hh = box.h / 2;
+  const sx = dx === 0 ? Infinity : hw / Math.abs(dx);
+  const sy = dy === 0 ? Infinity : hh / Math.abs(dy);
+  const s = Math.min(sx, sy);
+  return { x: box.cx + dx * s, y: box.cy + dy * s };
+}
+
+export interface EdgeGeom {
+  path: string; // SVG path data
+  handle: Point; // the on-curve midpoint the user drags
+  p0: Point;
+  p1: Point;
+}
+
+// A quadratic curve from src box to dst box that passes through M = mid + bend at t=0.5.
+// Endpoints are aimed at M (not the raw control point) so the curve leaves each box
+// pointing where it visually goes; the control point is derived to make B(0.5) === M.
+export function edgeGeom(src: Box, dst: Box, bend: [number, number]): EdgeGeom {
+  const mid = midpoint({ x: src.cx, y: src.cy }, { x: dst.cx, y: dst.cy });
+  const M: Point = { x: mid.x + bend[0], y: mid.y + bend[1] };
+  const p0 = borderPoint(src, M);
+  const p1 = borderPoint(dst, M);
+  const ctrl: Point = { x: 2 * M.x - (p0.x + p1.x) / 2, y: 2 * M.y - (p0.y + p1.y) / 2 };
+  const path = `M ${r(p0.x)} ${r(p0.y)} Q ${r(ctrl.x)} ${r(ctrl.y)} ${r(p1.x)} ${r(p1.y)}`;
+  return { path, handle: M, p0, p1 };
+}
+
+function r(n: number): number {
+  return Math.round(n * 100) / 100;
+}
