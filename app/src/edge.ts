@@ -15,10 +15,11 @@ export interface EdgeStyle {
   markerEnd: string | null; // marker id at the destination end
 }
 
-const PURPLE = "#a86bff";
-const GOLD = "#f4c26f";
-const GREEN = "#5ec8a0";
-const SLATE = "#8894c4";
+// Tuned for legibility on the light gradient canvas.
+const PURPLE = "#7c5cf0";
+const GOLD = "#d98324";
+const GREEN = "#0f9d8f";
+const SLATE = "#6b7280";
 
 // Marker ids resolve to <marker> defs in render.ts. Colours are baked into each marker
 // (no SVG2 context-stroke, which some engines drop — leaving hollow markers invisible).
@@ -43,7 +44,7 @@ export function edgeStyle(rel: SeedRelation): EdgeStyle {
         markerEnd: "m-arrow-slate",
       };
     case "contract":
-      return { color: "#e879c7", dash: "3 4", markerStart: null, markerEnd: null };
+      return { color: "#db2777", dash: "3 4", markerStart: null, markerEnd: null };
     default:
       return { color: SLATE, dash: null, markerStart: null, markerEnd: "m-arrow-slate" };
   }

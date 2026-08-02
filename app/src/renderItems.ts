@@ -8,7 +8,7 @@ import type { Store } from "./store";
 const CHAR_W = 7.2; // note text metrics
 const LINE_H = 18;
 const PAD = 10;
-const ACCENT = "#6a7bff";
+const ACCENT = "#7c5cf0";
 
 // Groups sit behind the classes; images between; notes on top. main render orders them.
 export function renderGroups(store: Store): string {
@@ -23,13 +23,13 @@ export function renderNotes(store: Store): string {
 
 function group(g: GroupItem, sel: boolean): string {
   const label = g.label
-    ? `<text x="${r(g.x + 10)}" y="${r(g.y + 18)}" fill="#b7b2d8" font-size="12.5" ` +
+    ? `<text x="${r(g.x + 10)}" y="${r(g.y + 18)}" fill="#6a5f85" font-size="12.5" ` +
       `font-weight="600">${esc(g.label)}</text>`
     : "";
   return (
     `<g class="group" data-id="${attr(g.id)}">` +
     `<rect x="${r(g.x)}" y="${r(g.y)}" width="${r(g.w)}" height="${r(g.h)}" rx="10" ` +
-    `fill="rgba(120,130,200,0.05)" stroke="#8f89ba" stroke-width="1.3" stroke-dasharray="7 5"/>` +
+    `fill="rgba(255,255,255,0.14)" stroke="#8878b0" stroke-width="1.3" stroke-dasharray="7 5"/>` +
     label +
     `</g>` +
     chrome(g, "group", sel)
@@ -42,7 +42,7 @@ function image(im: ImageItem, sel: boolean): string {
     `<image href="${attr(im.src)}" x="${r(im.x)}" y="${r(im.y)}" width="${r(im.w)}" ` +
     `height="${r(im.h)}" preserveAspectRatio="xMidYMid meet"/>` +
     `<rect x="${r(im.x)}" y="${r(im.y)}" width="${r(im.w)}" height="${r(im.h)}" rx="6" ` +
-    `fill="transparent" stroke="rgba(255,255,255,.12)"/>` +
+    `fill="transparent" stroke="rgba(80,60,120,.22)"/>` +
     `</g>` +
     chrome(im, "image", sel)
   );

@@ -14,11 +14,13 @@ interface BoxKind {
   fill: string;
   stroke: string;
 }
+// Soft peach→pink gradient cards (fill is the shared #card gradient), with a per-kind
+// border colour to keep the UML type legible.
 const BOX_KINDS: Record<string, BoxKind> = {
-  class: { fill: "#201a3d", stroke: "#5566c9" },
-  abstract: { fill: "#241a44", stroke: "#a86bff" },
-  interface: { fill: "#172a26", stroke: "#5ec8a0" },
-  struct: { fill: "#2a2338", stroke: "#f4c26f" },
+  class: { fill: "url(#card)", stroke: "#8b7ae8" },
+  abstract: { fill: "url(#card)", stroke: "#b06be0" },
+  interface: { fill: "url(#card)", stroke: "#2bb0a0" },
+  struct: { fill: "url(#card)", stroke: "#e0902a" },
 };
 
 export function renderScene(store: Store): string {
@@ -94,30 +96,31 @@ function renderBox(node: SeedNode, box: Box, collapsed: boolean): string {
   const y0 = box.cy - d.h / 2;
   const kind = BOX_KINDS[node.kind] ?? BOX_KINDS.class!;
   const parts: string[] = [
-    `<rect x="${round(x0)}" y="${round(y0)}" width="${d.w}" height="${round(d.h)}" rx="7" ` +
-      `fill="${kind.fill}" stroke="${kind.stroke}" stroke-width="1.4"/>`,
+    `<rect x="${round(x0)}" y="${round(y0)}" width="${d.w}" height="${round(d.h)}" rx="14" ` +
+      `fill="${kind.fill}" stroke="${kind.stroke}" stroke-width="1.2" stroke-opacity="0.65" ` +
+      `filter="url(#cardshadow)"/>`,
   ];
   let cy = y0;
   if (d.stereotype) {
-    parts.push(centerText(box.cx, cy + 12, d.stereotype, "#b7b2d8", false, 10.5));
+    parts.push(centerText(box.cx, cy + 12, d.stereotype, "#8a7fa0", false, 10.5));
     cy += LINE_H;
   }
   // Chevron signals (and, via a header click, toggles) collapse.
-  parts.push(leftText(x0 + 7, cy + 16, collapsed ? "▸" : "▾", "#9d96c7"));
-  parts.push(centerText(box.cx, cy + 16, d.title, "#f2f1fa", d.italic, 12.5, true));
+  parts.push(leftText(x0 + 7, cy + 16, collapsed ? "▸" : "▾", "#9a8fb5"));
+  parts.push(centerText(box.cx, cy + 16, d.title, "#332d4d", d.italic, 12.5, true));
   cy += TITLE_H;
 
   if (collapsed) {
     parts.push(sep(x0, cy, d.w, kind.stroke));
     cy += PAD;
-    parts.push(centerText(box.cx, cy + 11, d.hint, "#8f89ba", false, 11));
+    parts.push(centerText(box.cx, cy + 11, d.hint, "#8a7fa0", false, 11));
     return `<g class="nd" data-key="${attr(node.key)}">${parts.join("")}</g>`;
   }
 
   parts.push(sep(x0, cy, d.w, kind.stroke));
   cy += PAD;
   for (const a of d.attrs) {
-    parts.push(leftText(x0 + PAD, cy + 11, a, "#cfcbe8"));
+    parts.push(leftText(x0 + PAD, cy + 11, a, "#5a5273"));
     cy += LINE_H;
   }
   parts.push(sep(x0, cy, d.w, kind.stroke));
@@ -128,7 +131,7 @@ function renderBox(node: SeedNode, box: Box, collapsed: boolean): string {
       `<g class="mrow" data-key="${attr(node.key)}" data-method="${attr(m.name)}">` +
         `<rect x="${round(x0 + 2)}" y="${round(cy)}" width="${round(d.w - 4)}" height="${LINE_H}" ` +
         `rx="3" fill="transparent"/>` +
-        leftText(x0 + PAD, cy + 11, m.label, "#cfcbe8") +
+        leftText(x0 + PAD, cy + 11, m.label, "#5a5273") +
         `</g>`,
     );
     cy += LINE_H;
@@ -150,16 +153,16 @@ function docNote(node: SeedNode, box: Box, store: Store): string {
   const p1 = borderPoint(noteBox, { x: box.cx, y: box.cy }); // border of the card
   const conn =
     `<line x1="${round(p0.x)}" y1="${round(p0.y)}" x2="${round(p1.x)}" y2="${round(p1.y)}" ` +
-    `stroke="#5b7fb0" stroke-width="1.2" stroke-dasharray="5 4"/>`;
+    `stroke="#9b7fd6" stroke-width="1.2" stroke-dasharray="5 4"/>`;
   const texts = lines
-    .map((ln, i) => leftText(x + P + 4, y + P + 12 + i * LH, ln, "#cfe0f5"))
+    .map((ln, i) => leftText(x + P + 4, y + P + 12 + i * LH, ln, "#4f4568"))
     .join("");
   return (
     conn +
     `<g class="docnote" data-key="${attr(node.key)}">` +
-    `<rect x="${round(x)}" y="${round(y)}" width="${W}" height="${round(h)}" rx="6" ` +
-    `fill="#182234" stroke="#3f5c86"/>` +
-    `<rect x="${round(x)}" y="${round(y)}" width="4" height="${round(h)}" fill="#5b7fb0"/>` +
+    `<rect x="${round(x)}" y="${round(y)}" width="${W}" height="${round(h)}" rx="8" ` +
+    `fill="rgba(255,255,255,0.72)" stroke="#b9a8e0"/>` +
+    `<rect x="${round(x)}" y="${round(y)}" width="4" height="${round(h)}" rx="2" fill="#9b7fd6"/>` +
     texts +
     `</g>`
   );
@@ -193,18 +196,27 @@ function leftText(x: number, y: number, text: string, color: string): string {
 // Colours are baked into each marker (not context-stroke, which some engines drop,
 // leaving the hollow triangle/diamond/arrow invisible — the "lines with no ends" bug).
 function defs(): string {
-  const bg = "#0d0a1f";
-  const P = "#a86bff"; // inherits / implements
-  const G = "#5ec8a0"; // association
-  const S = "#8894c4"; // dependency
-  const D = "#f4c26f"; // composition / aggregation
+  const bg = "#ffffff"; // hollow markers read as white against the frosted cards
+  const P = "#7c5cf0"; // inherits / implements
+  const G = "#0f9d8f"; // association
+  const S = "#6b7280"; // dependency
+  const D = "#d98324"; // composition / aggregation
   const tri = `<path d="M0,0 L10,5 L0,10 Z" fill="${bg}" stroke="${P}" stroke-width="1.4"/>`;
   const arrowG = `<path d="M0,0 L10,5 L0,10" fill="none" stroke="${G}" stroke-width="1.6"/>`;
   const arrowS = `<path d="M0,0 L10,5 L0,10" fill="none" stroke="${S}" stroke-width="1.6"/>`;
   const diaFill = `<path d="M0,5 L5,0 L10,5 L5,10 Z" fill="${D}" stroke="${D}" stroke-width="1.2"/>`;
   const diaOpen = `<path d="M0,5 L5,0 L10,5 L5,10 Z" fill="${bg}" stroke="${D}" stroke-width="1.3"/>`;
+  // Soft peach→pink card fill and a gentle drop shadow so classes lift off the canvas.
+  const cardGrad =
+    `<linearGradient id="card" x1="0" y1="0" x2="0" y2="1">` +
+    `<stop offset="0" stop-color="#fff3e6"/><stop offset="1" stop-color="#ffdcec"/></linearGradient>`;
+  const shadow =
+    `<filter id="cardshadow" x="-20%" y="-20%" width="140%" height="140%">` +
+    `<feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#c98bb0" flood-opacity="0.3"/></filter>`;
   return (
     `<defs>` +
+    cardGrad +
+    shadow +
     marker("m-tri", 15, 10, 5, tri) +
     marker("m-arrow-green", 14, 9, 5, arrowG) +
     marker("m-arrow-slate", 14, 9, 5, arrowS) +
