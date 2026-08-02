@@ -85,7 +85,10 @@ export interface Overlay {
   groups: GroupItem[];
   docNotes: Record<string, Point>; // per-class doc-note position override (keyed by node key)
   hideDocs?: boolean; // global toggle for the auto class-docstring notes
+  edgeMode?: "curved" | "orthogonal"; // relationship line routing (default curved)
 }
+
+export type EdgeMode = "curved" | "orthogonal";
 
 export function emptyOverlay(): Overlay {
   return { boxes: {}, edges: {}, collapsed: {}, notes: [], images: [], groups: [], docNotes: {} };

@@ -23,7 +23,13 @@ function mount(seed: Seed, scope: string): void {
   store = new Store(seed, scope);
   byKey = new Map(seed.nodes.map((n) => [n.key, n]));
   updateLegend(seed);
+  updateLinesLabel();
   rerender();
+}
+
+function updateLinesLabel(): void {
+  const btn = document.getElementById("lines")!;
+  btn.textContent = store?.edgeMode() === "orthogonal" ? "lines: 90°" : "lines: curved";
 }
 
 const LEGEND: Record<string, { glyph: string; color: string; label: string }> = {
@@ -93,6 +99,13 @@ async function boot(): Promise<void> {
   document.getElementById("docs")!.addEventListener("click", () => {
     if (store) {
       store.toggleDocs();
+      rerender();
+    }
+  });
+  document.getElementById("lines")!.addEventListener("click", () => {
+    if (store) {
+      store.toggleEdgeMode();
+      updateLinesLabel();
       rerender();
     }
   });

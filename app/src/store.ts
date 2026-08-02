@@ -81,6 +81,14 @@ export class Store {
     return this.overlay.view ?? { panX: 0, panY: 0, zoom: 1 };
   }
 
+  edgeMode(): "curved" | "orthogonal" {
+    return this.overlay.edgeMode ?? "curved";
+  }
+  toggleEdgeMode(): void {
+    this.overlay.edgeMode = this.edgeMode() === "curved" ? "orthogonal" : "curved";
+    this.scheduleSave();
+  }
+
   // Auto class-docstring notes: a global on/off, plus a per-class position override.
   showDocs(): boolean {
     return !this.overlay.hideDocs;
@@ -257,6 +265,7 @@ function normalize(o: Partial<Overlay>): Overlay {
     groups: o.groups ?? [],
     docNotes: o.docNotes ?? {},
     hideDocs: o.hideDocs,
+    edgeMode: o.edgeMode,
   };
 }
 

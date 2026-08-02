@@ -2,7 +2,7 @@
 // renderer stateless; interaction listeners live on the container, so replacing
 // innerHTML never detaches them.
 
-import { borderPoint, dims, edgeGeom, metrics, type Box } from "./geometry";
+import { borderPoint, dims, edgeGeom, metrics, orthogonalGeom, type Box } from "./geometry";
 import { edgeKey, edgeStyle } from "./edge";
 import { renderGroups, renderImages, renderNotes, wrap } from "./renderItems";
 import type { SeedNode } from "./model";
@@ -41,7 +41,9 @@ export function renderScene(store: Store): string {
     const dst = boxes.get(rel.dst);
     if (!src || !dst) continue;
     const key = edgeKey(rel);
-    const geom = edgeGeom(src, dst, store.edgeBend(key));
+    const bend = store.edgeBend(key);
+    const geom =
+      store.edgeMode() === "orthogonal" ? orthogonalGeom(src, dst, bend) : edgeGeom(src, dst, bend);
     const st = edgeStyle(rel);
     const dash = st.dash ? ` stroke-dasharray="${st.dash}"` : "";
     const ms = st.markerStart ? ` marker-start="url(#${st.markerStart})"` : "";

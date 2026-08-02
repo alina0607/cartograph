@@ -119,6 +119,59 @@ export function edgeGeom(src: Box, dst: Box, bend: [number, number]): EdgeGeom {
   return { path, handle: M, p0, p1 };
 }
 
+// Right-angle ("orthogonal") routing with rounded corners, like an architecture diagram.
+// The line leaves and enters the boxes on their facing sides and turns once; the draggable
+// handle sits on the middle segment, so the elbow can still be nudged along its axis.
+export function orthogonalGeom(src: Box, dst: Box, bend: [number, number]): EdgeGeom {
+  const dx = dst.cx - src.cx;
+  const dy = dst.cy - src.cy;
+  const R = 12;
+  let p0: Point;
+  let p1: Point;
+  let corners: Point[];
+  let handle: Point;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    const s = dx >= 0 ? 1 : -1;
+    p0 = { x: src.cx + (s * src.w) / 2, y: src.cy };
+    p1 = { x: dst.cx - (s * dst.w) / 2, y: dst.cy };
+    const mx = (p0.x + p1.x) / 2 + bend[0];
+    corners = [{ x: mx, y: p0.y }, { x: mx, y: p1.y }];
+    handle = { x: mx, y: (p0.y + p1.y) / 2 };
+  } else {
+    const s = dy >= 0 ? 1 : -1;
+    p0 = { x: src.cx, y: src.cy + (s * src.h) / 2 };
+    p1 = { x: dst.cx, y: dst.cy - (s * dst.h) / 2 };
+    const my = (p0.y + p1.y) / 2 + bend[1];
+    corners = [{ x: p0.x, y: my }, { x: p1.x, y: my }];
+    handle = { x: (p0.x + p1.x) / 2, y: my };
+  }
+  return { path: roundedPath([p0, ...corners, p1], R), handle, p0, p1 };
+}
+
+// A polyline through `pts` with each interior corner rounded by radius `r`.
+function roundedPath(pts: Point[], radius: number): string {
+  const first = pts[0]!;
+  let d = `M ${r(first.x)} ${r(first.y)}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const cur = pts[i]!;
+    const a = toward(cur, pts[i - 1]!, radius);
+    const b = toward(cur, pts[i + 1]!, radius);
+    d += ` L ${r(a.x)} ${r(a.y)} Q ${r(cur.x)} ${r(cur.y)} ${r(b.x)} ${r(b.y)}`;
+  }
+  const last = pts[pts.length - 1]!;
+  d += ` L ${r(last.x)} ${r(last.y)}`;
+  return d;
+}
+
+// A point `dist` away from `from` toward `to` (clamped to the segment's half length).
+function toward(from: Point, to: Point, dist: number): Point {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const d = Math.min(dist, len / 2);
+  return { x: from.x + (dx / len) * d, y: from.y + (dy / len) * d };
+}
+
 function r(n: number): number {
   return Math.round(n * 100) / 100;
 }
