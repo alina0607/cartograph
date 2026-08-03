@@ -13,14 +13,16 @@ const { LINE_H, TITLE_H, PAD } = metrics;
 interface BoxKind {
   fill: string;
   stroke: string;
+  ink: string; // title text
+  ink2: string; // member / stereotype text
 }
-// Soft peach→pink gradient cards (fill is the shared #card gradient), with a per-kind
-// border colour to keep the UML type legible.
+// Each UML kind gets its own colour so classes, abstracts, interfaces and structs are
+// distinguishable at a glance (and tell apart from the rose doc-notes and yellow notes).
 const BOX_KINDS: Record<string, BoxKind> = {
-  class: { fill: "url(#card)", stroke: "#8b7ae8" },
-  abstract: { fill: "url(#card)", stroke: "#b06be0" },
-  interface: { fill: "url(#card)", stroke: "#2bb0a0" },
-  struct: { fill: "url(#card)", stroke: "#e0902a" },
+  class: { fill: "#ab9fd6", stroke: "#877ac0", ink: "#ffffff", ink2: "#efeafb" },
+  abstract: { fill: "#cbc987", stroke: "#aeab63", ink: "#33320c", ink2: "#4b4820" },
+  interface: { fill: "#a0cdc5", stroke: "#77b2a8", ink: "#14352f", ink2: "#274d45" },
+  struct: { fill: "#aabfe0", stroke: "#7f9fca", ink: "#16304f", ink2: "#2b476b" },
 };
 
 export function renderScene(store: Store): string {
@@ -100,31 +102,31 @@ function renderBox(node: SeedNode, box: Box, collapsed: boolean): string {
   const y0 = box.cy - d.h / 2;
   const kind = BOX_KINDS[node.kind] ?? BOX_KINDS.class!;
   const parts: string[] = [
-    `<rect x="${round(x0)}" y="${round(y0)}" width="${d.w}" height="${round(d.h)}" rx="14" ` +
-      `fill="${kind.fill}" stroke="${kind.stroke}" stroke-width="1.2" stroke-opacity="0.65" ` +
+    `<rect x="${round(x0)}" y="${round(y0)}" width="${d.w}" height="${round(d.h)}" rx="12" ` +
+      `fill="${kind.fill}" stroke="${kind.stroke}" stroke-width="1.2" ` +
       `filter="url(#cardshadow)"/>`,
   ];
   let cy = y0;
   if (d.stereotype) {
-    parts.push(centerText(box.cx, cy + 12, d.stereotype, "#8a7fa0", false, 10.5));
+    parts.push(centerText(box.cx, cy + 12, d.stereotype, kind.ink2, false, 10.5));
     cy += LINE_H;
   }
   // Chevron signals (and, via a header click, toggles) collapse.
-  parts.push(leftText(x0 + 7, cy + 16, collapsed ? "▸" : "▾", "#9a8fb5"));
-  parts.push(centerText(box.cx, cy + 16, d.title, "#332d4d", d.italic, 12.5, true));
+  parts.push(leftText(x0 + 7, cy + 16, collapsed ? "▸" : "▾", kind.ink2));
+  parts.push(centerText(box.cx, cy + 16, d.title, kind.ink, d.italic, 12.5, true));
   cy += TITLE_H;
 
   if (collapsed) {
     parts.push(sep(x0, cy, d.w, kind.stroke));
     cy += PAD;
-    parts.push(centerText(box.cx, cy + 11, d.hint, "#8a7fa0", false, 11));
+    parts.push(centerText(box.cx, cy + 11, d.hint, kind.ink2, false, 11));
     return `<g class="nd" data-key="${attr(node.key)}">${parts.join("")}</g>`;
   }
 
   parts.push(sep(x0, cy, d.w, kind.stroke));
   cy += PAD;
   for (const a of d.attrs) {
-    parts.push(leftText(x0 + PAD, cy + 11, a, "#5a5273"));
+    parts.push(leftText(x0 + PAD, cy + 11, a, kind.ink2));
     cy += LINE_H;
   }
   parts.push(sep(x0, cy, d.w, kind.stroke));
@@ -135,7 +137,7 @@ function renderBox(node: SeedNode, box: Box, collapsed: boolean): string {
       `<g class="mrow" data-key="${attr(node.key)}" data-method="${attr(m.name)}">` +
         `<rect x="${round(x0 + 2)}" y="${round(cy)}" width="${round(d.w - 4)}" height="${LINE_H}" ` +
         `rx="3" fill="transparent"/>` +
-        leftText(x0 + PAD, cy + 11, m.label, "#5a5273") +
+        leftText(x0 + PAD, cy + 11, m.label, kind.ink2) +
         `</g>`,
     );
     cy += LINE_H;
@@ -157,16 +159,16 @@ function docNote(node: SeedNode, box: Box, store: Store): string {
   const p1 = borderPoint(noteBox, { x: box.cx, y: box.cy }); // border of the card
   const conn =
     `<line x1="${round(p0.x)}" y1="${round(p0.y)}" x2="${round(p1.x)}" y2="${round(p1.y)}" ` +
-    `stroke="#9b7fd6" stroke-width="1.2" stroke-dasharray="5 4"/>`;
+    `stroke="#bd7676" stroke-width="1.2" stroke-dasharray="5 4"/>`;
   const texts = lines
-    .map((ln, i) => leftText(x + P + 4, y + P + 12 + i * LH, ln, "#4f4568"))
+    .map((ln, i) => leftText(x + P + 4, y + P + 12 + i * LH, ln, "#fff1f0"))
     .join("");
   return (
     conn +
     `<g class="docnote" data-key="${attr(node.key)}">` +
     `<rect x="${round(x)}" y="${round(y)}" width="${W}" height="${round(h)}" rx="8" ` +
-    `fill="rgba(255,255,255,0.72)" stroke="#b9a8e0"/>` +
-    `<rect x="${round(x)}" y="${round(y)}" width="4" height="${round(h)}" rx="2" fill="#9b7fd6"/>` +
+    `fill="#c98787" stroke="#aa6a6a" filter="url(#cardshadow)"/>` +
+    `<rect x="${round(x)}" y="${round(y)}" width="4" height="${round(h)}" rx="2" fill="#8f4f4f"/>` +
     texts +
     `</g>`
   );
