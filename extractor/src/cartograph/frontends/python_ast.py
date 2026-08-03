@@ -10,6 +10,7 @@ that resolve to a class in the same scan, so stdlib/builtin types drop out.
 from __future__ import annotations
 
 import ast
+from collections.abc import Callable
 
 from cartograph.model import (
     ABSTRACT,
@@ -222,6 +223,12 @@ def _attributes(cls: ast.ClassDef) -> tuple[tuple[str, str], ...]:
         if name not in found or (type_str and not found[name]):
             found[name] = type_str
 
+    _class_body_attrs(cls, add)
+    _instance_attrs(cls, add)
+    return tuple(found.items())
+
+
+def _class_body_attrs(cls: ast.ClassDef, add: Callable[[str, str], None]) -> None:
     for stmt in cls.body:
         if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
             add(stmt.target.id, _unparse(stmt.annotation))
@@ -230,21 +237,24 @@ def _attributes(cls: ast.ClassDef) -> tuple[tuple[str, str], ...]:
                 if isinstance(tgt, ast.Name):
                     add(tgt.id, "")
 
-    for method in cls.body:
-        if not isinstance(method, ast.FunctionDef | ast.AsyncFunctionDef):
-            continue
-        for sub in ast.walk(method):
-            if isinstance(sub, ast.AnnAssign):
-                attr = _self_attr_name(sub.target)
-                if attr:
-                    add(attr, _unparse(sub.annotation))
-            elif isinstance(sub, ast.Assign):
-                for tgt in sub.targets:
-                    attr = _self_attr_name(tgt)
-                    if attr:
-                        add(attr, "")
 
-    return tuple(found.items())
+def _instance_attrs(cls: ast.ClassDef, add: Callable[[str, str], None]) -> None:
+    for method in cls.body:
+        if isinstance(method, ast.FunctionDef | ast.AsyncFunctionDef):
+            for sub in ast.walk(method):
+                _self_assign(sub, add)
+
+
+def _self_assign(sub: ast.AST, add: Callable[[str, str], None]) -> None:
+    if isinstance(sub, ast.AnnAssign):
+        attr = _self_attr_name(sub.target)
+        if attr:
+            add(attr, _unparse(sub.annotation))
+    elif isinstance(sub, ast.Assign):
+        for tgt in sub.targets:
+            attr = _self_attr_name(tgt)
+            if attr:
+                add(attr, "")
 
 
 def _self_attr_name(target: ast.expr) -> str | None:

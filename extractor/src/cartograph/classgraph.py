@@ -63,6 +63,24 @@ def resolve(nodes: list[Node], refs: list[Reference]) -> tuple[Relation, ...]:
         structural_pairs.add((ref.src, dst))
 
     edges = structural
+    edges += _dependency_edges(dep_refs, structural_pairs, seen, by_name, module_of, lang_of)
+    edges = _drop_inherited_has_a(edges)
+    edges += _contract_edges(nodes)
+    edges.sort(key=lambda r: (r.src, r.dst, r.kind, r.lazy))
+    return tuple(edges)
+
+
+def _dependency_edges(
+    dep_refs: list[Reference],
+    structural_pairs: set[tuple[str, str]],
+    seen: set[tuple[str, str, str, bool]],
+    by_name: dict[str, list[str]],
+    module_of: dict[str, str],
+    lang_of: dict[str, str],
+) -> list[Relation]:
+    """Keep a transient construction only when the target is a local class in the same
+    package and the pair is not already joined by a structural edge."""
+    out: list[Relation] = []
     for ref in dep_refs:
         dst = _resolve_one(ref, by_name, module_of, lang_of)
         if dst is None or dst == ref.src or (ref.src, dst) in structural_pairs:
@@ -73,12 +91,8 @@ def resolve(nodes: list[Node], refs: list[Reference]) -> tuple[Relation, ...]:
         if sig in seen:
             continue
         seen.add(sig)
-        edges.append(Relation(src=ref.src, dst=dst, kind=DEPENDENCY))
-
-    edges = _drop_inherited_has_a(edges)
-    edges += _contract_edges(nodes)
-    edges.sort(key=lambda r: (r.src, r.dst, r.kind, r.lazy))
-    return tuple(edges)
+        out.append(Relation(src=ref.src, dst=dst, kind=DEPENDENCY))
+    return out
 
 
 def _resolve_one(
