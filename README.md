@@ -70,7 +70,7 @@ and hit **scan**.
 - [x] Python frontend, six UML relationships, interactive canvas, study-notes layer
 - [x] TypeScript frontend
 - [x] Cross-language contracts (a concept shared between, e.g., a Python and a TypeScript type)
-- [ ] Go frontend
+- [x] Go frontend
 
 ## License
 
