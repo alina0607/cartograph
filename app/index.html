@@ -7,15 +7,16 @@
     <style>
       :root {
         color-scheme: light;
-        --ui: "Space Grotesk Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        --ui: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         --mono: ui-monospace, "SFMono-Regular", Menlo, monospace;
-        --ink: #4a4363;
-        --glass: rgba(255, 255, 255, 0.42);
-        --glass-edge: rgba(255, 255, 255, 0.72);
+        --ink: #3f3a52;
+        --edge: rgba(120, 100, 150, 0.16);
+        --accent: #d6558b;
       }
       html, body { height: 100%; margin: 0; }
       body {
-        background: linear-gradient(115deg, #ffd9c6 0%, #ffbfd2 34%, #e3b8f0 66%, #c3b1f5 100%);
+        /* light, professional canvas with just a wash of pink/lavender */
+        background: linear-gradient(155deg, #fbeef4 0%, #f4f3fb 55%, #f0ecf9 100%);
         background-attachment: fixed;
         color: var(--ink);
         font: 13px/1.5 var(--ui);
@@ -23,45 +24,45 @@
         flex-direction: column;
       }
       #bar {
-        display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-        padding: 11px 18px; border-bottom: 1px solid var(--glass-edge);
-        background: rgba(255, 255, 255, 0.34);
-        backdrop-filter: blur(16px) saturate(1.3);
-        box-shadow: 0 2px 24px rgba(150, 110, 180, 0.12);
+        display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+        padding: 11px 18px; border-bottom: 1px solid var(--edge);
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(18px) saturate(1.2);
+        box-shadow: 0 1px 12px rgba(120, 90, 150, 0.07);
       }
       #bar h1 {
-        font-size: 16px; margin: 0; font-weight: 700; letter-spacing: 0.5px;
-        background: linear-gradient(92deg, #ff9e80, #e879c7 48%, #8b5cf6);
+        font-size: 16px; margin: 0; font-weight: 700; letter-spacing: -0.2px;
+        background: linear-gradient(92deg, #e0568f, #b45ad8 55%, #7c5cf0);
         -webkit-background-clip: text; -webkit-text-fill-color: transparent;
       }
       button {
-        background: rgba(255, 255, 255, 0.42); border: 1px solid var(--glass-edge);
-        color: #6a5a7e; border-radius: 999px; padding: 5px 14px; font-size: 12px;
-        letter-spacing: 0.3px; cursor: pointer; font-family: var(--ui);
-        backdrop-filter: blur(6px); transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+        background: #fff; border: 1px solid var(--edge);
+        color: #5c5470; border-radius: 8px; padding: 5px 13px; font-size: 12px;
+        font-weight: 500; cursor: pointer; font-family: var(--ui);
+        transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
       }
       button:hover {
-        background: rgba(255, 255, 255, 0.74); color: #40354f;
-        box-shadow: 0 3px 14px rgba(160, 120, 200, 0.22);
+        background: #fff; color: var(--accent); border-color: rgba(214, 85, 139, 0.4);
+        box-shadow: 0 2px 8px rgba(150, 100, 160, 0.12);
       }
       #path {
-        flex: 0 1 320px; padding: 5px 14px; font-size: 12px; font-family: var(--mono);
-        background: rgba(255, 255, 255, 0.4); color: var(--ink);
-        border: 1px solid var(--glass-edge); border-radius: 999px;
+        flex: 0 1 320px; padding: 6px 12px; font-size: 12px; font-family: var(--mono);
+        background: #fff; color: var(--ink);
+        border: 1px solid var(--edge); border-radius: 8px;
       }
       #path::placeholder { color: #a99cbb; }
-      #path:focus { outline: none; border-color: rgba(139, 92, 246, 0.6); }
+      #path:focus { outline: none; border-color: var(--accent); }
       #path.err { border-color: #e0616f; }
-      #hint { color: #7a6d8e; font-size: 11.5px; margin-left: auto; }
+      #hint { color: #8478a0; font-size: 11.5px; margin-left: auto; }
       #app { flex: 1; min-height: 0; overflow: hidden; touch-action: none; cursor: grab; }
       svg { display: block; }
       .nd { cursor: grab; }
       .nd:active { cursor: grabbing; }
-      .eh { cursor: grab; fill: rgba(124, 92, 240, 0.5); stroke: #fff; stroke-width: 1; }
-      .eh:hover { fill: #8b5cf6; }
+      .eh { cursor: grab; fill: rgba(124, 92, 240, 0.45); stroke: #fff; stroke-width: 1; }
+      .eh:hover { fill: #7c5cf0; }
       .mrow { cursor: pointer; }
-      .mrow:hover rect { fill: rgba(124, 92, 240, 0.14); }
-      .mrow:hover text { fill: #2a2340; }
+      .mrow:hover rect { fill: rgba(124, 92, 240, 0.1); }
+      .mrow:hover text { fill: #1f1b30; }
       .note, .image, .group { cursor: grab; }
       .rz { cursor: nwse-resize; }
       .del { cursor: pointer; }

@@ -198,14 +198,13 @@ function leftText(x: number, y: number, text: string, color: string): string {
 }
 
 function defs(): string {
-  // Soft peach→pink card fill and a gentle drop shadow so classes lift off the canvas.
+  // Clean white cards with a whisper of pink, lifted by a soft neutral shadow.
   const cardGrad =
     `<linearGradient id="card" x1="0" y1="0" x2="0" y2="1">` +
-    `<stop offset="0" stop-color="#ffe4c2"/><stop offset="0.5" stop-color="#ffd0d6"/>` +
-    `<stop offset="1" stop-color="#ffbcdd"/></linearGradient>`;
+    `<stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#fdf2f7"/></linearGradient>`;
   const shadow =
     `<filter id="cardshadow" x="-25%" y="-25%" width="150%" height="150%">` +
-    `<feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#b96fa8" flood-opacity="0.34"/></filter>`;
+    `<feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="#8b6fae" flood-opacity="0.16"/></filter>`;
   return `<defs>${cardGrad}${shadow}</defs>`;
 }
 

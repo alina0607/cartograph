@@ -1,4 +1,4 @@
-import "@fontsource-variable/space-grotesk";
+import "@fontsource-variable/inter";
 import type { CodeboardDoc, Seed, SeedNode } from "./model";
 import { Store } from "./store";
 import { renderScene } from "./render";
