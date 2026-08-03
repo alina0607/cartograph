@@ -24,7 +24,17 @@ function mount(seed: Seed, scope: string): void {
   byKey = new Map(seed.nodes.map((n) => [n.key, n]));
   updateLegend(seed);
   updateLinesLabel();
+  setStatus(nodeCounts(seed));
   rerender();
+}
+
+function nodeCounts(seed: Seed): string {
+  const fns = seed.nodes.filter((n) => n.kind === "function").length;
+  const cls = seed.nodes.length - fns;
+  const parts = [`${cls} class${cls === 1 ? "" : "es"}`];
+  if (fns) parts.push(`${fns} function${fns === 1 ? "" : "s"}`);
+  parts.push(`${seed.relations.length} relation${seed.relations.length === 1 ? "" : "s"}`);
+  return parts.join(" · ");
 }
 
 function updateLinesLabel(): void {
@@ -185,7 +195,7 @@ async function scan(): Promise<void> {
     localStorage.setItem(LAST_PATH_KEY, path);
     pathInput.classList.remove("err");
     mount(data, path);
-    setStatus(`${data.nodes.length} classes · ${data.relations.length} relations`);
+    setStatus(nodeCounts(data));
   } catch (e) {
     pathInput.classList.add("err");
     setStatus((e as Error).message || "scan failed");
