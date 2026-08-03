@@ -27,6 +27,15 @@ const BOX_KINDS: Record<string, BoxKind> = {
   function: { fill: "#aeb3bd", stroke: "#8b909c", ink: "#232630", ink2: "#3a3d47" },
 };
 
+// Language is a second visual channel (box colour already encodes the UML kind): a coloured
+// left stripe on every box plus a short tag, so Python / TypeScript / Go tell apart at a
+// glance and mixed-language scans are readable.
+export const LANG_STYLE: Record<string, { tag: string; color: string; label: string }> = {
+  python: { tag: "py", color: "#2b6cb0", label: "Python" },
+  typescript: { tag: "ts", color: "#d97706", label: "TypeScript" },
+  go: { tag: "go", color: "#0e9aa7", label: "Go" },
+};
+
 export function renderScene(store: Store): string {
   const showFns = store.showFunctions();
   const visible = store.seed.nodes.filter((n) => showFns || n.kind !== "function");
@@ -103,11 +112,13 @@ function renderBox(node: SeedNode, box: Box, collapsed: boolean): string {
   const x0 = box.cx - d.w / 2;
   const y0 = box.cy - d.h / 2;
   const kind = BOX_KINDS[node.kind] ?? BOX_KINDS.class!;
+  const lang = LANG_STYLE[node.lang];
   if (node.kind === "function") {
     return (
       `<g class="nd" data-key="${attr(node.key)}">` +
       `<rect x="${round(x0)}" y="${round(y0)}" width="${d.w}" height="${round(d.h)}" rx="9" ` +
       `fill="${kind.fill}" stroke="${kind.stroke}" stroke-width="1.1" filter="url(#cardshadow)"/>` +
+      langStripe(x0, y0, d.h, lang) +
       centerText(box.cx, y0 + 17, d.title, kind.ink, false, 12) +
       `</g>`
     );
@@ -116,6 +127,8 @@ function renderBox(node: SeedNode, box: Box, collapsed: boolean): string {
     `<rect x="${round(x0)}" y="${round(y0)}" width="${d.w}" height="${round(d.h)}" rx="12" ` +
       `fill="${kind.fill}" stroke="${kind.stroke}" stroke-width="1.2" ` +
       `filter="url(#cardshadow)"/>`,
+    langStripe(x0, y0, d.h, lang),
+    langBadge(x0 + d.w, y0, lang),
   ];
   let cy = y0;
   if (d.stereotype) {
@@ -182,6 +195,27 @@ function docNote(node: SeedNode, box: Box, store: Store): string {
     `<rect x="${round(x)}" y="${round(y)}" width="4" height="${round(h)}" rx="2" fill="#8f4f4f"/>` +
     texts +
     `</g>`
+  );
+}
+
+type Lang = (typeof LANG_STYLE)[string] | undefined;
+
+// A coloured left stripe marking the source language (rounded to sit inside the card corner).
+function langStripe(x0: number, y0: number, h: number, lang: Lang): string {
+  if (!lang) return "";
+  return `<rect x="${round(x0)}" y="${round(y0 + 2)}" width="4.5" height="${round(h - 4)}" rx="2.2" fill="${lang.color}"/>`;
+}
+
+// A small py/ts/go pill in the top-right of a type box.
+function langBadge(xRight: number, yTop: number, lang: Lang): string {
+  if (!lang) return "";
+  const bw = 20;
+  const bh = 13;
+  const x = xRight - bw - 7;
+  const y = yTop + 6;
+  return (
+    `<rect x="${round(x)}" y="${round(y)}" width="${bw}" height="${bh}" rx="6" fill="${lang.color}" fill-opacity="0.92"/>` +
+    `<text x="${round(x + bw / 2)}" y="${round(y + 9.6)}" text-anchor="middle" font-size="9" fill="#ffffff" style="font-weight:600">${lang.tag}</text>`
   );
 }
 

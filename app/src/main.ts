@@ -1,7 +1,7 @@
 import "@fontsource-variable/inter";
 import type { CodeboardDoc, Seed, SeedNode } from "./model";
 import { Store } from "./store";
-import { renderScene } from "./render";
+import { LANG_STYLE, renderScene } from "./render";
 import { wireInteractions } from "./interactions";
 import { openMethodModal } from "./ui/modal";
 
@@ -108,8 +108,19 @@ function updateLegend(seed: Seed): void {
       return `<div class="lg-row"><span class="lg-sw" style="color:${e.color}">${e.glyph}</span>${e.label}</div>`;
     })
     .join("");
-  legendEl.innerHTML = rows;
-  legendEl.classList.toggle("on", rows.length > 0);
+  // Which languages are on the board, so the stripe / badge colours are decoded.
+  const langs = [...new Set(seed.nodes.map((n) => n.lang))]
+    .filter((l) => LANG_STYLE[l])
+    .sort();
+  const langRows = langs
+    .map((l) => {
+      const e = LANG_STYLE[l]!;
+      return `<div class="lg-row"><span class="lg-sw" style="color:${e.color}">■</span>${e.label}</div>`;
+    })
+    .join("");
+  const sep = rows && langRows ? `<div class="lg-sep"></div>` : "";
+  legendEl.innerHTML = rows + sep + langRows;
+  legendEl.classList.toggle("on", (rows + langRows).length > 0);
 }
 
 async function boot(): Promise<void> {
