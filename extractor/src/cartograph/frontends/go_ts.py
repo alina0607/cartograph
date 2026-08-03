@@ -52,7 +52,9 @@ def extract(source: str, module: str) -> tuple[list[Node], list[Reference]]:
             continue
         name_node = md.child_by_field_name("name")
         if name_node is not None:
-            rec.methods.append(Method(name=_text(name_node, src), source=_text(md, src)))
+            rec.methods.append(
+                Method(name=_text(name_node, src), doc=_leading_doc(md, src), source=_text(md, src))
+            )
         _scan_composite(md, src, rec.constructs)
 
     nodes: list[Node] = []
@@ -68,6 +70,7 @@ def extract(source: str, module: str) -> tuple[list[Node], list[Reference]]:
                 name=rec.name,
                 module=module,
                 kind=rec.kind,
+                doc=rec.doc,
                 attributes=tuple(rec.attributes),
                 methods=tuple(rec.methods),
             )
@@ -77,10 +80,11 @@ def extract(source: str, module: str) -> tuple[list[Node], list[Reference]]:
 
 
 class _Type:
-    def __init__(self, name: str, key: str, kind: str) -> None:
+    def __init__(self, name: str, key: str, kind: str, doc: str = "") -> None:
         self.name = name
         self.key = key
         self.kind = kind
+        self.doc = doc
         self.attributes: list[tuple[str, str]] = []
         self.methods: list[Method] = []
         self.refs: list[Reference] = []
@@ -94,8 +98,9 @@ def _type_spec(spec: TSNode, module: str, src: bytes) -> _Type | None:
         return None
     name = _text(name_node, src)
     key = node_key(module, name)
+    doc = _doc_for_type(spec, src)
     if body.type == "interface_type":
-        rec = _Type(name, key, INTERFACE)
+        rec = _Type(name, key, INTERFACE, doc)
         for child in body.named_children:
             if child.type == "method_elem":
                 mn = _first(child, "field_identifier")
@@ -105,7 +110,7 @@ def _type_spec(spec: TSNode, module: str, src: bytes) -> _Type | None:
                 rec.refs.append(Reference(key, _base_name(child, src), INHERITS))
         return rec
 
-    rec = _Type(name, key, STRUCT)
+    rec = _Type(name, key, STRUCT, doc)
     fields = _first(body, "field_declaration_list")
     for fd in fields.named_children if fields else ():
         if fd.type != "field_declaration":
@@ -191,6 +196,34 @@ def _base_name(node: TSNode | None, src: bytes) -> str:
     if node.type == "generic_type":
         return _base_name(_first(node, "type_identifier"), src)
     return ""
+
+
+def _doc_for_type(spec: TSNode, src: bytes) -> str:
+    # A type's doc comment sits above its `type` declaration; a grouped spec has it above the spec.
+    decl = spec.parent
+    if decl is not None and decl.type == "type_declaration":
+        return _leading_doc(decl, src)
+    return _leading_doc(spec, src)
+
+
+def _leading_doc(node: TSNode, src: bytes) -> str:
+    """Consecutive Go ``//`` (or a ``/* */``) doc lines immediately above a declaration."""
+    lines: list[str] = []
+    c = node.prev_sibling
+    row = node.start_point[0]
+    while c is not None and c.type == "comment" and c.end_point[0] == row - 1:
+        lines.append(_clean_line(_text(c, src)))
+        row = c.start_point[0]
+        c = c.prev_sibling
+    lines.reverse()
+    return " ".join(ln for ln in lines if ln).strip()
+
+
+def _clean_line(text: str) -> str:
+    t = text.strip()
+    if t.startswith("/*"):
+        return " ".join(t[2:].removesuffix("*/").split())
+    return t.lstrip("/").strip()
 
 
 def _find(root: TSNode, type_: str) -> list[TSNode]:

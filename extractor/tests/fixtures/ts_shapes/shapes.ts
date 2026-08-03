@@ -30,6 +30,7 @@ class Color {
   b: number = 0;
 }
 
+/** A surface that owns shapes and paints them on a background. */
 class Canvas {
   shapes: Shape[] = [];
   background: Color;
@@ -38,6 +39,7 @@ class Canvas {
     this.background = new Color();
   }
 
+  /** Add a shape to the canvas so it will be drawn. */
   add(s: Shape): void {
     this.shapes.push(s);
   }

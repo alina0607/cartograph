@@ -25,11 +25,13 @@ func (c *Circle) Area() float64 { return 3.14 * c.Radius * c.Radius }
 
 func (c Circle) Draw() error { return nil }
 
+// Canvas owns shapes and paints them on a background.
 type Canvas struct {
 	shapes     []Shape // slice -> aggregation
 	background Color    // value -> composition
 }
 
+// Add appends a shape so it will be drawn.
 func (c *Canvas) Add(s Shape) { c.shapes = append(c.shapes, s) }
 
 type Renderer struct{}

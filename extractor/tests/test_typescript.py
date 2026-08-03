@@ -41,3 +41,11 @@ def test_ts_members() -> None:
     canvas = next(n for n in seed.nodes if n.name == "Canvas")
     assert dict(canvas.attributes) == {"shapes": "Shape[]", "background": "Color"}
     assert tuple(m.name for m in canvas.methods) == ("constructor", "add")
+
+
+def test_ts_docstrings() -> None:
+    seed = build_seed(FIXTURE)
+    canvas = next(n for n in seed.nodes if n.name == "Canvas")
+    assert canvas.doc == "A surface that owns shapes and paints them on a background."
+    add = next(m for m in canvas.methods if m.name == "add")
+    assert add.doc == "Add a shape to the canvas so it will be drawn."

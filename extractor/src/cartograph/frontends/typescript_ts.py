@@ -101,7 +101,13 @@ def _decl(decl: TSNode, module: str, src: bytes) -> tuple[Node | None, list[Refe
     refs += [Reference(key, n, DEPENDENCY) for n in sorted(constructs)]
 
     node = Node(
-        key=key, name=name, module=module, kind=kind, attributes=attributes, methods=methods
+        key=key,
+        name=name,
+        module=module,
+        kind=kind,
+        doc=_leading_doc(decl, src),
+        attributes=attributes,
+        methods=methods,
     )
     return node, refs
 
@@ -148,7 +154,7 @@ def _members(
             if nm is None:
                 continue
             source = _text(m, src) if m.type == "method_definition" else ""
-            methods.append(Method(name=_text(nm, src), source=source))
+            methods.append(Method(name=_text(nm, src), doc=_leading_doc(m, src), source=source))
             _scan_constructions(m, src, composes, constructs)
 
     return tuple(attrs.items()), tuple(methods), agg, assoc, composes, constructs
@@ -270,6 +276,25 @@ def _base_name(node: TSNode | None, src: bytes) -> str:
     if node.type == "nested_type_identifier":
         return _base_name(node.named_children[-1] if node.named_children else None, src)
     return _text(node, src)
+
+
+def _leading_doc(node: TSNode, src: bytes) -> str:
+    """The JSDoc/line comment directly above a declaration, cleaned to plain text."""
+    c = node.prev_sibling
+    if c is None or c.type != "comment" or node.start_point[0] - c.end_point[0] > 1:
+        return ""
+    return _clean_comment(_text(c, src))
+
+
+def _clean_comment(text: str) -> str:
+    t = text.strip()
+    if t.startswith("/*"):
+        body = t[2:].removesuffix("*/")
+        lines = [ln.strip().lstrip("*").strip() for ln in body.splitlines()]
+        return " ".join(ln for ln in lines if ln).strip()
+    if t.startswith("//"):
+        return t.lstrip("/").strip()
+    return t
 
 
 def _first(node: TSNode, type_: str) -> TSNode | None:
