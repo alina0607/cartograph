@@ -18,9 +18,11 @@ from cartograph.model import (
     ABSTRACT,
     AGGREGATION,
     ASSOCIATION,
+    CALLS,
     CLASS,
     COMPOSITION,
     DEPENDENCY,
+    FUNCTION,
     IMPLEMENTS,
     INHERITS,
     INTERFACE,
@@ -61,7 +63,52 @@ def extract(source: str, module: str) -> tuple[list[Node], list[Reference]]:
         if node is not None:
             nodes.append(node)
             refs.extend(drefs)
+    for fn in _top_functions(tree.root_node):
+        node, frefs = _function_node(fn, module, src)
+        nodes.append(node)
+        refs.extend(frefs)
     return nodes, refs
+
+
+def _top_functions(root: TSNode) -> list[TSNode]:
+    """Top-level ``function foo()`` declarations, including ``export function``."""
+    out: list[TSNode] = []
+    for child in root.named_children:
+        if child.type == "function_declaration":
+            out.append(child)
+        elif child.type == "export_statement":
+            fn = _first(child, "function_declaration")
+            if fn is not None:
+                out.append(fn)
+    return out
+
+
+def _function_node(fn: TSNode, module: str, src: bytes) -> tuple[Node, list[Reference]]:
+    name_node = fn.child_by_field_name("name")
+    name = _text(name_node, src) if name_node is not None else ""
+    key = node_key(module, name)
+    seen: set[str] = set()
+    refs: list[Reference] = []
+    for call in _descendants(fn, "call_expression"):
+        callee = call.child_by_field_name("function")
+        if callee is not None and callee.type == "identifier":
+            target = _text(callee, src)
+            if target and target != name and target not in seen:
+                seen.add(target)
+                refs.append(Reference(src=key, dst_name=target, kind=CALLS))
+    node = Node(key=key, name=name, module=module, kind=FUNCTION, doc=_leading_doc(fn, src))
+    return node, refs
+
+
+def _descendants(node: TSNode, type_: str) -> list[TSNode]:
+    out: list[TSNode] = []
+    stack = list(node.named_children)
+    while stack:
+        n = stack.pop()
+        if n.type == type_:
+            out.append(n)
+        stack.extend(n.named_children)
+    return out
 
 
 def _iter_decls(root: TSNode) -> list[TSNode]:

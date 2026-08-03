@@ -17,8 +17,10 @@ from tree_sitter import Node as TSNode
 from cartograph.model import (
     AGGREGATION,
     ASSOCIATION,
+    CALLS,
     COMPOSITION,
     DEPENDENCY,
+    FUNCTION,
     INHERITS,
     INTERFACE,
     STRUCT,
@@ -76,7 +78,29 @@ def extract(source: str, module: str) -> tuple[list[Node], list[Reference]]:
             )
         )
         refs.extend(rec.refs)
+
+    for fd in _find(root, "function_declaration"):  # standalone funcs (methods handled above)
+        node, frefs = _function_node(fd, module, src)
+        nodes.append(node)
+        refs.extend(frefs)
     return nodes, refs
+
+
+def _function_node(fd: TSNode, module: str, src: bytes) -> tuple[Node, list[Reference]]:
+    name_node = fd.child_by_field_name("name")
+    name = _text(name_node, src) if name_node is not None else ""
+    key = node_key(module, name)
+    seen: set[str] = set()
+    refs: list[Reference] = []
+    for call in _find(fd, "call_expression"):
+        callee = call.child_by_field_name("function")
+        if callee is not None and callee.type == "identifier":
+            target = _text(callee, src)
+            if target and target != name and target not in seen:
+                seen.add(target)
+                refs.append(Reference(src=key, dst_name=target, kind=CALLS))
+    node = Node(key=key, name=name, module=module, kind=FUNCTION, doc=_leading_doc(fd, src))
+    return node, refs
 
 
 class _Type:
