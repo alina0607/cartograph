@@ -19,9 +19,11 @@ from collections import defaultdict
 from cartograph.model import (
     AGGREGATION,
     ASSOCIATION,
+    CALLS,
     COMPOSITION,
     CONTRACT,
     DEPENDENCY,
+    FUNCTION,
     IMPLEMENTS,
     INHERITS,
     INTERFACE,
@@ -45,13 +47,17 @@ def resolve(nodes: list[Node], refs: list[Reference]) -> tuple[Relation, ...]:
     structural: list[Relation] = []
     structural_pairs: set[tuple[str, str]] = set()
     dep_refs: list[Reference] = []
+    calls_refs: list[Reference] = []
     seen: set[tuple[str, str, str, bool]] = set()
 
     for ref in refs:
         if ref.kind == DEPENDENCY:
             dep_refs.append(ref)
             continue
-        dst = _resolve_one(ref, by_name, module_of, lang_of)
+        if ref.kind == CALLS:
+            calls_refs.append(ref)
+            continue
+        dst = _resolve_one(ref, by_name, module_of, lang_of, kind_of)
         if dst is None or dst == ref.src:
             continue
         kind = IMPLEMENTS if ref.kind == INHERITS and kind_of.get(dst) == INTERFACE else ref.kind
@@ -63,8 +69,11 @@ def resolve(nodes: list[Node], refs: list[Reference]) -> tuple[Relation, ...]:
         structural_pairs.add((ref.src, dst))
 
     edges = structural
-    edges += _dependency_edges(dep_refs, structural_pairs, seen, by_name, module_of, lang_of)
+    edges += _dependency_edges(
+        dep_refs, structural_pairs, seen, by_name, module_of, lang_of, kind_of
+    )
     edges = _drop_inherited_has_a(edges)
+    edges += _call_edges(calls_refs, by_name, module_of, lang_of, kind_of, seen)
     edges += _contract_edges(nodes)
     edges.sort(key=lambda r: (r.src, r.dst, r.kind, r.lazy))
     return tuple(edges)
@@ -77,12 +86,13 @@ def _dependency_edges(
     by_name: dict[str, list[str]],
     module_of: dict[str, str],
     lang_of: dict[str, str],
+    kind_of: dict[str, str],
 ) -> list[Relation]:
     """Keep a transient construction only when the target is a local class in the same
     package and the pair is not already joined by a structural edge."""
     out: list[Relation] = []
     for ref in dep_refs:
-        dst = _resolve_one(ref, by_name, module_of, lang_of)
+        dst = _resolve_one(ref, by_name, module_of, lang_of, kind_of)
         if dst is None or dst == ref.src or (ref.src, dst) in structural_pairs:
             continue
         if _pkg_dir(module_of[ref.src]) != _pkg_dir(module_of.get(dst, "")):
@@ -95,13 +105,43 @@ def _dependency_edges(
     return out
 
 
+def _call_edges(
+    calls_refs: list[Reference],
+    by_name: dict[str, list[str]],
+    module_of: dict[str, str],
+    lang_of: dict[str, str],
+    kind_of: dict[str, str],
+    seen: set[tuple[str, str, str, bool]],
+) -> list[Relation]:
+    """A ``calls`` edge for each function that invokes another local function by name."""
+    out: list[Relation] = []
+    for ref in calls_refs:
+        dst = _resolve_one(ref, by_name, module_of, lang_of, kind_of, want=FUNCTION)
+        if dst is None or dst == ref.src:
+            continue
+        sig = (ref.src, dst, CALLS, False)
+        if sig in seen:
+            continue
+        seen.add(sig)
+        out.append(Relation(src=ref.src, dst=dst, kind=CALLS))
+    return out
+
+
 def _resolve_one(
     ref: Reference,
     by_name: dict[str, list[str]],
     module_of: dict[str, str],
     lang_of: dict[str, str],
+    kind_of: dict[str, str],
+    want: str | None = None,
 ) -> str | None:
-    candidates = by_name.get(ref.dst_name)
+    # ``want`` restricts to one node kind (functions for calls); otherwise structural edges
+    # target class-like nodes, never functions.
+    names = by_name.get(ref.dst_name, [])
+    if want is not None:
+        candidates = [c for c in names if kind_of.get(c) == want]
+    else:
+        candidates = [c for c in names if kind_of.get(c) != FUNCTION]
     if not candidates:
         return None
     # A structural edge (inherits/has-a/...) stays within one language — a Python class
@@ -124,7 +164,8 @@ def _contract_edges(nodes: list[Node]) -> list[Relation]:
     across the boundary (e.g. a ``User`` model in both a Python service and its TS client)."""
     by_name: dict[str, list[Node]] = defaultdict(list)
     for n in nodes:
-        by_name[n.name].append(n)
+        if n.kind != FUNCTION:  # cross-language concepts are types, not functions
+            by_name[n.name].append(n)
     out: list[Relation] = []
     for group in by_name.values():
         langs = {n.lang for n in group if n.lang}

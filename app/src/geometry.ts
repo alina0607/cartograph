@@ -55,6 +55,12 @@ export function dims(node: SeedNode, collapsed = false): BoxDims {
   const hint = `${c.attrs.length} field${plural(c.attrs.length)} · ${c.methods.length} method${plural(
     c.methods.length,
   )}`;
+  if (node.kind === "function") {
+    // A function is a compact single pill: name only, no compartments.
+    const label = `${node.name}()`;
+    const w = Math.max(MIN_W, Math.round(label.length * CHAR_W) + PAD * 2);
+    return { ...c, title: label, w, h: TITLE_H + PAD, collapsed: false, hint };
+  }
   const stereoH = c.stereotype ? LINE_H : 0;
   if (collapsed) {
     const longest = [c.stereotype, c.title, hint].reduce((m, s) => Math.max(m, s.length), 0);

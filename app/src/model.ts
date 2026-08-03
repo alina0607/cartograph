@@ -87,6 +87,7 @@ export interface Overlay {
   groups: GroupItem[];
   docNotes: Record<string, Point>; // per-class doc-note position override (keyed by node key)
   hideDocs?: boolean; // global toggle for the auto class-docstring notes
+  hideFunctions?: boolean; // global toggle for standalone-function nodes + call edges
   edgeMode?: "curved" | "orthogonal"; // relationship line routing (default curved)
 }
 

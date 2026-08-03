@@ -40,7 +40,8 @@ const LEGEND: Record<string, { glyph: string; color: string; label: string }> = 
   association: { glyph: "→", color: "#5ec8a0", label: "association — uses" },
   dependency: { glyph: "⇢", color: "#8894c4", label: "dependency — transient" },
   import: { glyph: "⇢", color: "#8894c4", label: "import" },
-  contract: { glyph: "⇠⇢", color: "#e879c7", label: "cross-language" },
+  contract: { glyph: "⇠⇢", color: "#db2777", label: "cross-language" },
+  calls: { glyph: "→", color: "#2e78c9", label: "calls (function)" },
 };
 const LEGEND_ORDER = [
   "inherits",
@@ -51,6 +52,7 @@ const LEGEND_ORDER = [
   "dependency",
   "import",
   "contract",
+  "calls",
 ];
 
 function updateLegend(seed: Seed): void {
@@ -106,6 +108,12 @@ async function boot(): Promise<void> {
     if (store) {
       store.toggleEdgeMode();
       updateLinesLabel();
+      rerender();
+    }
+  });
+  document.getElementById("fn")!.addEventListener("click", () => {
+    if (store) {
+      store.toggleFunctions();
       rerender();
     }
   });

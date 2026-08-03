@@ -45,6 +45,8 @@ export function edgeStyle(rel: SeedRelation): EdgeStyle {
       };
     case "contract":
       return { color: "#db2777", dash: "3 4", markerStart: null, markerEnd: null };
+    case "calls":
+      return { color: "#2e78c9", dash: null, markerStart: null, markerEnd: "m-arrow" };
     default:
       return { color: SLATE, dash: null, markerStart: null, markerEnd: "m-arrow-slate" };
   }

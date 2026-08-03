@@ -102,6 +102,14 @@ export class Store {
     this.scheduleSave();
   }
 
+  showFunctions(): boolean {
+    return !this.overlay.hideFunctions;
+  }
+  toggleFunctions(): void {
+    this.overlay.hideFunctions = !this.overlay.hideFunctions;
+    this.scheduleSave();
+  }
+
   // Auto class-docstring notes: a global on/off, plus a per-class position override.
   showDocs(): boolean {
     return !this.overlay.hideDocs;
@@ -278,6 +286,7 @@ function normalize(o: Partial<Overlay>): Overlay {
     groups: o.groups ?? [],
     docNotes: o.docNotes ?? {},
     hideDocs: o.hideDocs,
+    hideFunctions: o.hideFunctions,
     edgeMode: o.edgeMode,
   };
 }

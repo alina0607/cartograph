@@ -16,9 +16,11 @@ from cartograph.model import (
     ABSTRACT,
     AGGREGATION,
     ASSOCIATION,
+    CALLS,
     CLASS,
     COMPOSITION,
     DEPENDENCY,
+    FUNCTION,
     INHERITS,
     INTERFACE,
     Method,
@@ -63,7 +65,31 @@ def extract(source: str, module: str) -> tuple[list[Node], list[Reference]]:
         node, cls_refs = _class(cls, module, source)
         nodes.append(node)
         refs.extend(cls_refs)
+    for fn in tree.body:  # module-level functions (not methods) for the call graph
+        if isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef):
+            node, fn_refs = _function(fn, module)
+            nodes.append(node)
+            refs.extend(fn_refs)
     return nodes, refs
+
+
+def _function(
+    fn: ast.FunctionDef | ast.AsyncFunctionDef, module: str
+) -> tuple[Node, list[Reference]]:
+    """A standalone function node plus a ``calls`` edge for each function it invokes by name."""
+    key = node_key(module, fn.name)
+    seen: set[str] = set()
+    refs: list[Reference] = []
+    for sub in ast.walk(fn):
+        if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name):
+            target = sub.func.id
+            if target not in seen and target != fn.name:
+                seen.add(target)
+                refs.append(Reference(src=key, dst_name=target, kind=CALLS))
+    node = Node(
+        key=key, name=fn.name, module=module, kind=FUNCTION, doc=ast.get_docstring(fn) or ""
+    )
+    return node, refs
 
 
 def _iter_classes(tree: ast.Module) -> list[ast.ClassDef]:

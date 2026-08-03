@@ -20,12 +20,14 @@ ASSOCIATION = "association"
 DEPENDENCY = "dependency"
 IMPORT = "import"
 CONTRACT = "contract"  # cross-language: same concept named in two languages
+CALLS = "calls"  # a function calls another function (module/function graph)
 
 # Node kinds.
 CLASS = "class"
 ABSTRACT = "abstract"
 INTERFACE = "interface"
 STRUCT = "struct"
+FUNCTION = "function"  # a standalone (module-level) function, for the call graph
 
 
 def node_key(module: str, name: str) -> str:

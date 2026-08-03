@@ -23,12 +23,16 @@ const BOX_KINDS: Record<string, BoxKind> = {
   abstract: { fill: "#cbc987", stroke: "#aeab63", ink: "#33320c", ink2: "#4b4820" },
   interface: { fill: "#a0cdc5", stroke: "#77b2a8", ink: "#14352f", ink2: "#274d45" },
   struct: { fill: "#aabfe0", stroke: "#7f9fca", ink: "#16304f", ink2: "#2b476b" },
+  // Functions are neutral grey so they read as a different layer from the coloured types.
+  function: { fill: "#aeb3bd", stroke: "#8b909c", ink: "#232630", ink2: "#3a3d47" },
 };
 
 export function renderScene(store: Store): string {
+  const showFns = store.showFunctions();
+  const visible = store.seed.nodes.filter((n) => showFns || n.kind !== "function");
   const boxes = new Map<string, Box>();
   const collapsedOf = new Map<string, boolean>();
-  for (const node of store.seed.nodes) {
+  for (const node of visible) {
     const collapsed = store.isCollapsed(node.key);
     collapsedOf.set(node.key, collapsed);
     const d = dims(node, collapsed);
@@ -62,14 +66,12 @@ export function renderScene(store: Store): string {
     );
   }
 
-  const boxParts = store.seed.nodes.map((n) =>
-    renderBox(n, boxes.get(n.key)!, collapsedOf.get(n.key)!),
-  );
+  const boxParts = visible.map((n) => renderBox(n, boxes.get(n.key)!, collapsedOf.get(n.key)!));
 
   // Auto class-docstring notes: a distinct card dashed-linked to its class.
   const docParts: string[] = [];
   if (store.showDocs()) {
-    for (const node of store.seed.nodes) {
+    for (const node of visible) {
       if (node.doc) docParts.push(docNote(node, boxes.get(node.key)!, store));
     }
   }
@@ -101,6 +103,15 @@ function renderBox(node: SeedNode, box: Box, collapsed: boolean): string {
   const x0 = box.cx - d.w / 2;
   const y0 = box.cy - d.h / 2;
   const kind = BOX_KINDS[node.kind] ?? BOX_KINDS.class!;
+  if (node.kind === "function") {
+    return (
+      `<g class="nd" data-key="${attr(node.key)}">` +
+      `<rect x="${round(x0)}" y="${round(y0)}" width="${d.w}" height="${round(d.h)}" rx="9" ` +
+      `fill="${kind.fill}" stroke="${kind.stroke}" stroke-width="1.1" filter="url(#cardshadow)"/>` +
+      centerText(box.cx, y0 + 17, d.title, kind.ink, false, 12) +
+      `</g>`
+    );
+  }
   const parts: string[] = [
     `<rect x="${round(x0)}" y="${round(y0)}" width="${d.w}" height="${round(d.h)}" rx="12" ` +
       `fill="${kind.fill}" stroke="${kind.stroke}" stroke-width="1.2" ` +
@@ -227,7 +238,7 @@ function decoration(id: string, pt: Point, dir: Point, color: string): string {
       1.5,
     );
   }
-  if (id === "m-arrow-green" || id === "m-arrow-slate") {
+  if (id.startsWith("m-arrow")) {
     const L = 12;
     const W = 6.5;
     const b = { x: pt.x - dir.x * L, y: pt.y - dir.y * L };
