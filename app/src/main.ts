@@ -21,10 +21,45 @@ const rerender = () => {
 
 function mount(seed: Seed, scope: string): void {
   store = new Store(seed, scope);
+  const fresh = !store.hasSavedView(); // a brand-new scan gets auto-fitted
   byKey = new Map(seed.nodes.map((n) => [n.key, n]));
   updateLegend(seed);
   updateLinesLabel();
   setStatus(nodeCounts(seed));
+  rerender();
+  if (fresh) requestAnimationFrame(fitToContent);
+}
+
+// Frame the whole drawing in the viewport (measured from what actually rendered, once the
+// container has a size). Only called for a fresh scan or a reset — a board the user has
+// already panned keeps its view.
+function fitToContent(): void {
+  if (!store) return;
+  const rects = app.querySelectorAll<SVGRectElement>("#world .nd > rect");
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  rects.forEach((r) => {
+    const x = r.x.baseVal.value;
+    const y = r.y.baseVal.value;
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x + r.width.baseVal.value);
+    maxY = Math.max(maxY, y + r.height.baseVal.value);
+  });
+  const spanX = maxX - minX;
+  const spanY = maxY - minY;
+  const vw = app.clientWidth;
+  const vh = app.clientHeight;
+  if (!isFinite(minX) || vw < 50 || vh < 50 || spanX < 1 || spanY < 1) return;
+  const pad = 50;
+  const zoom = Math.min(1, Math.max(0.12, Math.min((vw - 2 * pad) / spanX, (vh - 2 * pad) / spanY)));
+  store.setView({
+    panX: (vw - spanX * zoom) / 2 - minX * zoom,
+    panY: (vh - spanY * zoom) / 2 - minY * zoom,
+    zoom,
+  });
   rerender();
 }
 
@@ -88,6 +123,7 @@ async function boot(): Promise<void> {
     if (store) {
       store.reset();
       rerender();
+      requestAnimationFrame(fitToContent);
     }
   });
   document.getElementById("scan")!.addEventListener("click", () => void scan());

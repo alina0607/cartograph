@@ -94,6 +94,12 @@ export class Store {
     return this.overlay.view ?? { panX: 0, panY: 0, zoom: 1 };
   }
 
+  // Whether this scope loaded with a remembered viewport (so a fresh scan can auto-fit,
+  // while a board the user already framed is left as they left it).
+  hasSavedView(): boolean {
+    return this.overlay.view !== undefined;
+  }
+
   edgeMode(): "curved" | "orthogonal" {
     return this.overlay.edgeMode ?? "curved";
   }
