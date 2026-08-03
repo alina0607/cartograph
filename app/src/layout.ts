@@ -1,24 +1,42 @@
-// Deterministic initial placement. Each connected component of the relationship graph is
-// laid out on its own by a spring-electrical (force-directed) model — every relationship,
-// including function `calls`, is a spring pulling its two nodes together while all nodes
-// repel — then the components are packed into non-overlapping regions (multi-node graphs
-// shelf-packed, lone nodes gathered into a tidy grid below). Separating components this way
-// keeps unrelated subgraphs from crossing each other. Seeded from a fixed spiral and run for
-// a fixed number of iterations, so the same scan always lays out the same way. The user
-// rearranges from here; their positions are what get remembered.
+// Deterministic initial placement by a layered (Sugiyama-style) algorithm — the same family
+// the professional UML tools use (PlantUML/Graphviz `dot`). Relationships that imply a
+// direction give the drawing a top-down flow: a base class / interface sits above its
+// subtypes, an owner above what it owns, a caller above what it calls. Each connected
+// component is laid out on its own — assign nodes to layers by longest path, break cycles so
+// the layers are well-defined, order within each layer to minimise crossings (barycenter
+// sweeps over dummy nodes standing in for edges that span several layers), then place with
+// parents centred over their children — and the finished components are packed side by side
+// so unrelated subgraphs stay close instead of drifting apart. Cross-language (`contract`)
+// links impose no vertical order; nodes with no directed relationship are gathered into a
+// grid underneath. Fully deterministic. The user rearranges from here; their positions win.
 
 import { dims } from "./geometry";
 import type { Point, Seed } from "./model";
 
-const GAP = 40; // desired clear gap between two connected boxes
-const K_SPRING = 0.05; // edge attraction stiffness
-const K_REP = 2600; // repulsion strength (size-aware)
-const K_GRAV = 0.03; // pull toward the component centroid so it stays compact
-const ITERS = 460;
-const SEED_SPACING = 46;
+const RANK_GAP = 66; // vertical clearance between layers
+const NODE_GAP = 44; // horizontal clearance between nodes in a layer
+const VIRT_W = 22; // lane width reserved for an edge passing through a layer
 const MARGIN = 60;
-const COMPONENT_GAP = 90; // clear space between packed components
-const SINGLE_GAP = 26; // tighter spacing for the lone-node grid
+const COMPONENT_GAP = 84; // clearance between packed components
+const LOOSE_GAP = 26; // spacing in the unrelated-nodes grid
+
+// For a directed relationship, which endpoint belongs on the upper layer (or null for none).
+function upperLower(kind: string, s: number, d: number): [number, number] | null {
+  switch (kind) {
+    case "inherits":
+    case "implements":
+      return [d, s]; // the base type sits above its subtype
+    case "composition":
+    case "aggregation":
+    case "association":
+    case "dependency":
+    case "import":
+    case "calls":
+      return [s, d]; // the owner / caller sits above
+    default:
+      return null; // cross-language contract etc. impose no vertical order
+  }
+}
 
 export function initialPositions(seed: Seed): Record<string, Point> {
   const order = [...seed.nodes].sort((a, b) => a.key.localeCompare(b.key));
@@ -27,239 +45,311 @@ export function initialPositions(seed: Seed): Record<string, Point> {
 
   const w = new Float64Array(n);
   const h = new Float64Array(n);
-  const r = new Float64Array(n); // node "radius" = half its diagonal, so big boxes claim space
   for (let i = 0; i < n; i++) {
     const d = dims(order[i]!);
     w[i] = d.w;
     h[i] = d.h;
-    r[i] = 0.5 * Math.hypot(d.w, d.h);
   }
-
   const index = new Map(order.map((nd, i) => [nd.key, i]));
-  const edges: Array<[number, number]> = [];
-  const seenEdge = new Set<string>();
-  for (const e of seed.relations) {
-    const a = index.get(e.src);
-    const b = index.get(e.dst);
-    if (a === undefined || b === undefined || a === b) continue;
-    const k = a < b ? `${a}-${b}` : `${b}-${a}`;
-    if (seenEdge.has(k)) continue;
-    seenEdge.add(k);
-    edges.push([a, b]);
-  }
 
-  // Connected components (undirected): lay each out on its own so unrelated subgraphs
-  // never overlap or cross one another.
-  const adj: number[][] = Array.from({ length: n }, () => []);
-  for (const [a, b] of edges) {
-    adj[a]!.push(b);
-    adj[b]!.push(a);
+  // Connected components over every relationship (so a whole hierarchy stays together), plus
+  // the directed ranking edges that drive the top-down layering.
+  const adjAll: number[][] = Array.from({ length: n }, () => []);
+  const redges: Array<[number, number]> = [];
+  const seen = new Set<string>();
+  for (const rel of seed.relations) {
+    const s = index.get(rel.src);
+    const d = index.get(rel.dst);
+    if (s === undefined || d === undefined || s === d) continue;
+    adjAll[s]!.push(d);
+    adjAll[d]!.push(s);
+    const p = upperLower(rel.kind, s, d);
+    if (!p) continue;
+    const k = `${p[0]}>${p[1]}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    redges.push(p);
   }
-  const comp = new Int32Array(n).fill(-1);
-  let nc = 0;
-  for (let s = 0; s < n; s++) {
-    if (comp[s] !== -1) continue;
-    const queue = [s];
-    comp[s] = nc;
-    for (let qi = 0; qi < queue.length; qi++) {
-      for (const nb of adj[queue[qi]!]!) {
-        if (comp[nb] === -1) {
-          comp[nb] = nc;
-          queue.push(nb);
-        }
-      }
+  const comp = components(adjAll, n);
+  const members: number[][] = Array.from({ length: comp.count }, () => []);
+  for (let i = 0; i < n; i++) members[comp.id[i]!]!.push(i);
+  const compRedges: Array<Array<[number, number]>> = Array.from({ length: comp.count }, () => []);
+  for (const e of redges) compRedges[comp.id[e[0]]!]!.push(e);
+
+  // Lay out each multi-node component; single, unrelated nodes go to a grid at the end.
+  interface Placed {
+    keys: string[];
+    xy: Point[]; // top-left, normalised so the component starts at (0,0)
+    w: number;
+    h: number;
+  }
+  const placed: Placed[] = [];
+  const loose: number[] = [];
+  for (let c = 0; c < comp.count; c++) {
+    const memb = members[c]!;
+    if (memb.length === 1) {
+      loose.push(memb[0]!);
+    } else {
+      placed.push(layeredComponent(memb, compRedges[c]!, order, w, h));
     }
-    nc++;
   }
-  const members: number[][] = Array.from({ length: nc }, () => []);
-  for (let i = 0; i < n; i++) members[comp[i]!]!.push(i);
-  const compEdges: Array<Array<[number, number]>> = Array.from({ length: nc }, () => []);
-  for (const [a, b] of edges) compEdges[comp[a]!]!.push([a, b]);
 
-  const px = new Float64Array(n);
-  const py = new Float64Array(n);
-  for (let c = 0; c < nc; c++) simulateComponent(members[c]!, compEdges[c]!, w, h, r, px, py);
-
-  packComponents(members, w, h, px, py);
-
-  let minX = Infinity;
-  let minY = Infinity;
-  for (let i = 0; i < n; i++) {
-    minX = Math.min(minX, px[i]! - w[i]! / 2);
-    minY = Math.min(minY, py[i]! - h[i]! / 2);
-  }
   const pos: Record<string, Point> = {};
-  for (let i = 0; i < n; i++) {
-    pos[order[i]!.key] = {
-      x: Math.round(px[i]! - w[i]! / 2 - minX + MARGIN),
-      y: Math.round(py[i]! - h[i]! / 2 - minY + MARGIN),
-    };
+  const target = Math.max(700, ...placed.map((p) => p.w));
+  const bottom = shelfPack(placed, target, COMPONENT_GAP, (p, x, y) => {
+    for (let i = 0; i < p.keys.length; i++) {
+      pos[p.keys[i]!] = { x: p.xy[i]!.x + x, y: p.xy[i]!.y + y };
+    }
+  });
+  packLoose(loose, order, w, h, target, bottom, pos);
+
+  // Normalise to a top-left margin.
+  let ox = Infinity;
+  let oy = Infinity;
+  for (const k in pos) {
+    ox = Math.min(ox, pos[k]!.x);
+    oy = Math.min(oy, pos[k]!.y);
+  }
+  for (const k in pos) {
+    pos[k] = { x: Math.round(pos[k]!.x - ox + MARGIN), y: Math.round(pos[k]!.y - oy + MARGIN) };
   }
   return pos;
 }
 
-// Force-directed layout of one component, written into the global px/py (centred near 0).
-function simulateComponent(
+// Layered layout of one connected component. Node indices are global; everything inside works
+// in a local 0..m-1 space. Returns top-left positions normalised to (0,0) plus the bounds.
+function layeredComponent(
   memb: number[],
-  cedges: Array<[number, number]>,
+  gedges: Array<[number, number]>,
+  order: Seed["nodes"],
   w: Float64Array,
   h: Float64Array,
-  r: Float64Array,
-  px: Float64Array,
-  py: Float64Array,
-): void {
+): { keys: string[]; xy: Point[]; w: number; h: number } {
   const m = memb.length;
-  if (m === 1) {
-    px[memb[0]!] = 0;
-    py[memb[0]!] = 0;
-    return;
-  }
-  const g2l = new Map(memb.map((gi, li) => [gi, li]));
-  const lx = new Float64Array(m);
-  const ly = new Float64Array(m);
+  const g2l = new Map(memb.map((g, l) => [g, l]));
   const lw = new Float64Array(m);
   const lh = new Float64Array(m);
-  const lr = new Float64Array(m);
-  for (let k = 0; k < m; k++) {
-    const gi = memb[k]!;
-    lw[k] = w[gi]!;
-    lh[k] = h[gi]!;
-    lr[k] = r[gi]!;
-    const a = k * 2.399963; // golden-angle spiral spreads the seed evenly
-    const rad = SEED_SPACING * Math.sqrt(k + 0.5);
-    lx[k] = rad * Math.cos(a);
-    ly[k] = rad * Math.sin(a);
+  for (let l = 0; l < m; l++) {
+    lw[l] = w[memb[l]!]!;
+    lh[l] = h[memb[l]!]!;
   }
-  const le = cedges.map(([a, b]) => [g2l.get(a)!, g2l.get(b)!] as [number, number]);
+  const edges: Array<[number, number]> = gedges.map(([u, v]) => [g2l.get(u)!, g2l.get(v)!]);
 
-  const fx = new Float64Array(m);
-  const fy = new Float64Array(m);
-  let step = 60;
-  for (let it = 0; it < ITERS; it++) {
-    fx.fill(0);
-    fy.fill(0);
-    for (let i = 0; i < m; i++) {
-      for (let j = i + 1; j < m; j++) {
-        let dx = lx[i]! - lx[j]!;
-        let dy = ly[i]! - ly[j]!;
-        let d2 = dx * dx + dy * dy;
-        if (d2 < 1) {
-          d2 = 1;
-          dx = 0.5;
-          dy = 0.5;
-        }
-        const d = Math.sqrt(d2);
-        const f = (K_REP * (lr[i]! + lr[j]!)) / d2;
-        const ux = dx / d;
-        const uy = dy / d;
-        fx[i]! += ux * f;
-        fy[i]! += uy * f;
-        fx[j]! -= ux * f;
-        fy[j]! -= uy * f;
-      }
+  const dag = removeCycles(edges, m);
+  const rank = longestPathRanks(dag, m);
+  const maxRank = rank.reduce((mx, r) => Math.max(mx, r), 0);
+
+  // Layers with dummy nodes so every kept edge spans exactly one layer.
+  const layers: number[][] = Array.from({ length: maxRank + 1 }, () => []);
+  for (let l = 0; l < m; l++) layers[rank[l]!]!.push(l);
+  const up = new Map<number, number[]>();
+  const down = new Map<number, number[]>();
+  const link = (a: number, b: number): void => {
+    (down.get(a) ?? down.set(a, []).get(a)!).push(b);
+    (up.get(b) ?? up.set(b, []).get(b)!).push(a);
+  };
+  let vid = m;
+  for (const [u, v] of dag) {
+    let prev = u;
+    for (let r = rank[u]! + 1; r < rank[v]!; r++) {
+      const nvid = vid++;
+      layers[r]!.push(nvid);
+      link(prev, nvid);
+      prev = nvid;
     }
-    for (const [a, b] of le) {
-      const dx = lx[a]! - lx[b]!;
-      const dy = ly[a]! - ly[b]!;
-      const d = Math.hypot(dx, dy) || 0.01;
-      const rest = lr[a]! + lr[b]! + GAP;
-      const f = K_SPRING * (d - rest);
-      const ux = dx / d;
-      const uy = dy / d;
-      fx[a]! -= ux * f;
-      fy[a]! -= uy * f;
-      fx[b]! += ux * f;
-      fy[b]! += uy * f;
-    }
-    let cx = 0;
-    let cy = 0;
-    for (let i = 0; i < m; i++) {
-      cx += lx[i]!;
-      cy += ly[i]!;
-    }
-    cx /= m;
-    cy /= m;
-    for (let i = 0; i < m; i++) {
-      fx[i]! += (cx - lx[i]!) * K_GRAV;
-      fy[i]! += (cy - ly[i]!) * K_GRAV;
-    }
-    for (let i = 0; i < m; i++) {
-      const mag = Math.hypot(fx[i]!, fy[i]!);
-      if (mag > step) {
-        fx[i]! = (fx[i]! / mag) * step;
-        fy[i]! = (fy[i]! / mag) * step;
-      }
-      lx[i]! += fx[i]!;
-      ly[i]! += fy[i]!;
-    }
-    step = Math.max(2, step * 0.985);
+    link(prev, v);
+  }
+  const width = (id: number): number => (id < m ? lw[id]! : VIRT_W);
+
+  for (let iter = 0; iter < 8; iter++) {
+    for (let r = 1; r <= maxRank; r++) barycenter(layers, r, layers[r - 1]!, up);
+    for (let r = maxRank - 1; r >= 0; r--) barycenter(layers, r, layers[r + 1]!, down);
   }
 
-  resolveOverlaps(lx, ly, lw, lh, m);
-  for (let k = 0; k < m; k++) {
-    px[memb[k]!] = lx[k]!;
-    py[memb[k]!] = ly[k]!;
+  const X = new Float64Array(vid);
+  for (const layer of layers) {
+    let cursor = 0;
+    for (const id of layer) {
+      X[id] = cursor + width(id) / 2;
+      cursor += width(id) + NODE_GAP;
+    }
   }
+  const desired = new Float64Array(vid);
+  for (let pass = 0; pass < 14; pass++) {
+    for (const layer of layers) {
+      for (const id of layer) {
+        const nb = [...(up.get(id) ?? []), ...(down.get(id) ?? [])];
+        desired[id] = nb.length ? nb.reduce((s, x) => s + X[x]!, 0) / nb.length : X[id]!;
+      }
+      placeLayer(layer, X, desired, width);
+    }
+  }
+
+  const centerY = new Float64Array(maxRank + 1);
+  let top = 0;
+  for (let r = 0; r <= maxRank; r++) {
+    let bandH = 30;
+    for (const id of layers[r]!) if (id < m) bandH = Math.max(bandH, lh[id]!);
+    centerY[r] = top + bandH / 2;
+    top += bandH + RANK_GAP;
+  }
+
+  const keys: string[] = [];
+  const xy: Point[] = [];
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (let l = 0; l < m; l++) {
+    const x = X[l]! - lw[l]! / 2;
+    const y = centerY[rank[l]!]! - lh[l]! / 2;
+    keys.push(order[memb[l]!]!.key);
+    xy.push({ x, y });
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x + lw[l]!);
+    maxY = Math.max(maxY, y + lh[l]!);
+  }
+  for (const p of xy) {
+    p.x -= minX;
+    p.y -= minY;
+  }
+  return { keys, xy, w: maxX - minX, h: maxY - minY };
 }
 
-interface CompBox {
-  members: number[];
-  minX: number;
-  minY: number;
+// Undirected connected components.
+function components(adj: number[][], n: number): { id: Int32Array; count: number } {
+  const id = new Int32Array(n).fill(-1);
+  let count = 0;
+  for (let s = 0; s < n; s++) {
+    if (id[s] !== -1) continue;
+    const q = [s];
+    id[s] = count;
+    for (let qi = 0; qi < q.length; qi++) {
+      for (const v of adj[q[qi]!]!) if (id[v] === -1) ((id[v] = count), q.push(v));
+    }
+    count++;
+  }
+  return { id, count };
+}
+
+// Reorder one layer by the average position of each node's neighbours in the reference layer;
+// nodes with no neighbour there keep their current slot. Stable, with an index tie-break.
+function barycenter(
+  layers: number[][],
+  r: number,
+  ref: number[],
+  adj: Map<number, number[]>,
+): void {
+  const refPos = new Map(ref.map((id, i) => [id, i]));
+  const cur = layers[r]!;
+  const bary = cur.map((id, i) => {
+    const nb = adj.get(id) ?? [];
+    if (nb.length === 0) return i;
+    let s = 0;
+    for (const x of nb) s += refPos.get(x) ?? i;
+    return s / nb.length;
+  });
+  const idx = cur.map((_, i) => i);
+  idx.sort((a, b) => bary[a]! - bary[b]! || a - b);
+  layers[r] = idx.map((i) => cur[i]!);
+}
+
+// Place a layer at the desired centres, left to right with minimum clearance, then shift the
+// whole row so its mean matches the desired mean (keeps it from drifting sideways).
+function placeLayer(
+  layer: number[],
+  X: Float64Array,
+  desired: Float64Array,
+  width: (id: number) => number,
+): void {
+  if (layer.length === 0) return;
+  let prevRight = -Infinity;
+  for (let i = 0; i < layer.length; i++) {
+    const id = layer[i]!;
+    const half = width(id) / 2;
+    let cx = desired[id]!;
+    const minCx = prevRight + NODE_GAP + half;
+    if (i > 0 && cx < minCx) cx = minCx;
+    X[id] = cx;
+    prevRight = cx + half;
+  }
+  let sum = 0;
+  let want = 0;
+  for (const id of layer) {
+    sum += X[id]!;
+    want += desired[id]!;
+  }
+  const shift = (want - sum) / layer.length;
+  for (const id of layer) X[id]! += shift;
+}
+
+// Drop back edges via an iterative depth-first traversal so the kept edges form a DAG.
+function removeCycles(edges: Array<[number, number]>, n: number): Array<[number, number]> {
+  const adj: number[][] = Array.from({ length: n }, () => []);
+  for (const [u, v] of edges) adj[u]!.push(v);
+  const color = new Uint8Array(n); // 0 white, 1 grey (on stack), 2 black
+  const kept: Array<[number, number]> = [];
+  const stack: Array<{ u: number; i: number }> = [];
+  for (let start = 0; start < n; start++) {
+    if (color[start] !== 0) continue;
+    stack.push({ u: start, i: 0 });
+    color[start] = 1;
+    while (stack.length) {
+      const top = stack[stack.length - 1]!;
+      if (top.i >= adj[top.u]!.length) {
+        color[top.u] = 2;
+        stack.pop();
+        continue;
+      }
+      const v = adj[top.u]![top.i++]!;
+      if (color[v] === 1) continue; // back edge -> drop
+      kept.push([top.u, v]);
+      if (color[v] === 0) {
+        color[v] = 1;
+        stack.push({ u: v, i: 0 });
+      }
+    }
+  }
+  return kept;
+}
+
+// Longest-path layering: rank(v) = max(rank(u)+1) over kept edges u->v, sources at 0.
+function longestPathRanks(dag: Array<[number, number]>, n: number): Int32Array {
+  const outAdj: number[][] = Array.from({ length: n }, () => []);
+  const inDeg = new Int32Array(n);
+  for (const [u, v] of dag) {
+    outAdj[u]!.push(v);
+    inDeg[v]!++;
+  }
+  const rank = new Int32Array(n);
+  const queue: number[] = [];
+  for (let i = 0; i < n; i++) if (inDeg[i] === 0) queue.push(i);
+  for (let qi = 0; qi < queue.length; qi++) {
+    const u = queue[qi]!;
+    for (const v of outAdj[u]!) {
+      if (rank[v]! < rank[u]! + 1) rank[v] = rank[u]! + 1;
+      if (--inDeg[v]! === 0) queue.push(v);
+    }
+  }
+  return rank;
+}
+
+interface Sized {
   w: number;
   h: number;
-  slotX?: number; // assigned by shelfPack
-  slotY?: number;
 }
 
-// Move each already-laid-out component into a non-overlapping slot: multi-node components
-// are shelf-packed into rows, the lone nodes gathered into a compact grid beneath them.
-function packComponents(
-  members: number[][],
-  w: Float64Array,
-  h: Float64Array,
-  px: Float64Array,
-  py: Float64Array,
-): void {
-  const boxes: CompBox[] = members.map((memb) => {
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (const i of memb) {
-      minX = Math.min(minX, px[i]! - w[i]! / 2);
-      minY = Math.min(minY, py[i]! - h[i]! / 2);
-      maxX = Math.max(maxX, px[i]! + w[i]! / 2);
-      maxY = Math.max(maxY, py[i]! + h[i]! / 2);
-    }
-    return { members: memb, minX, minY, w: maxX - minX, h: maxY - minY };
-  });
-
-  const multi = boxes.filter((b) => b.members.length > 1).sort((a, b) => b.w * b.h - a.w * a.h);
-  const singles = boxes.filter((b) => b.members.length === 1);
-
-  const totalArea = boxes.reduce((s, b) => s + b.w * b.h, 0);
-  const widest = boxes.reduce((mx, b) => Math.max(mx, b.w), 0);
-  const target = Math.max(widest, Math.sqrt(totalArea) * 1.3, 700);
-
-  const bottom = shelfPack(multi, target, COMPONENT_GAP, 0);
-  shelfPack(singles, target, SINGLE_GAP, bottom > 0 ? bottom + COMPONENT_GAP : 0);
-
-  for (const b of boxes) {
-    const dx = b.slotX! - b.minX;
-    const dy = b.slotY! - b.minY;
-    for (const i of b.members) {
-      px[i]! += dx;
-      py[i]! += dy;
-    }
-  }
-}
-
-// Left-to-right, top-to-bottom shelf packing; records each box's slot and returns the
-// y the next region can start at.
-function shelfPack(items: CompBox[], target: number, gap: number, startY: number): number {
+// Left-to-right, top-to-bottom shelf packing; reports each item's slot via `place` and
+// returns the y the next region can start at.
+function shelfPack<T extends Sized>(
+  items: T[],
+  target: number,
+  gap: number,
+  place: (item: T, x: number, y: number) => void,
+): number {
   let x = 0;
-  let y = startY;
+  let y = 0;
   let rowH = 0;
   for (const it of items) {
     if (x > 0 && x + it.w > target) {
@@ -267,42 +357,34 @@ function shelfPack(items: CompBox[], target: number, gap: number, startY: number
       x = 0;
       rowH = 0;
     }
-    it.slotX = x;
-    it.slotY = y;
+    place(it, x, y);
     x += it.w + gap;
     rowH = Math.max(rowH, it.h);
   }
-  return items.length ? y + rowH : startY;
+  return items.length ? y + rowH + gap : 0;
 }
 
-// Push apart any pair of boxes whose axis-aligned rectangles overlap, along the smaller axis.
-function resolveOverlaps(
-  px: Float64Array,
-  py: Float64Array,
+// Gather unrelated single nodes into a grid below the hierarchy.
+function packLoose(
+  loose: number[],
+  order: Seed["nodes"],
   w: Float64Array,
   h: Float64Array,
-  n: number,
+  target: number,
+  startY: number,
+  pos: Record<string, Point>,
 ): void {
-  const pad = 18;
-  for (let pass = 0; pass < 50; pass++) {
-    let moved = false;
-    for (let i = 0; i < n; i++) {
-      for (let j = i + 1; j < n; j++) {
-        const ox = (w[i]! + w[j]!) / 2 + pad - Math.abs(px[i]! - px[j]!);
-        const oy = (h[i]! + h[j]!) / 2 + pad - Math.abs(py[i]! - py[j]!);
-        if (ox <= 0 || oy <= 0) continue;
-        moved = true;
-        if (ox < oy) {
-          const s = ((px[i]! < px[j]! ? -1 : 1) * ox) / 2;
-          px[i]! += s;
-          px[j]! -= s;
-        } else {
-          const s = ((py[i]! < py[j]! ? -1 : 1) * oy) / 2;
-          py[i]! += s;
-          py[j]! -= s;
-        }
-      }
+  let x = 0;
+  let y = startY;
+  let rowH = 0;
+  for (const i of loose) {
+    if (x > 0 && x + w[i]! > target) {
+      y += rowH + LOOSE_GAP;
+      x = 0;
+      rowH = 0;
     }
-    if (!moved) break;
+    pos[order[i]!.key] = { x, y };
+    x += w[i]! + LOOSE_GAP;
+    rowH = Math.max(rowH, h[i]!);
   }
 }
