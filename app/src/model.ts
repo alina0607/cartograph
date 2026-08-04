@@ -86,9 +86,15 @@ export interface Overlay {
   images: ImageItem[];
   groups: GroupItem[];
   docNotes: Record<string, Point>; // per-class doc-note position override (keyed by node key)
-  hideDocs?: boolean; // global toggle for the auto class-docstring notes
-  hideFunctions?: boolean; // global toggle for standalone-function nodes + call edges
-  edgeMode?: "curved" | "orthogonal"; // relationship line routing (default curved)
+  // Both default to OFF: a first look should show the type architecture, not every function and
+  // every docstring paragraph. `hide*` are the older inverted flags, still read when loading a
+  // board saved before the default flipped — ignoring them would silently re-show what its
+  // author had switched off.
+  showDocs?: boolean; // the auto class-docstring notes
+  showFunctions?: boolean; // standalone-function nodes + call edges
+  hideDocs?: boolean; // deprecated, read on load only
+  hideFunctions?: boolean; // deprecated, read on load only
+  edgeMode?: "curved" | "orthogonal"; // relationship line routing (default 90°)
 }
 
 export type EdgeMode = "curved" | "orthogonal";

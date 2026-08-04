@@ -39,8 +39,23 @@ export class Store {
     this.seed = seed;
     this.scope = scope;
     this.key = STORAGE_PREFIX + scope;
-    this.base = initialPositions(seed);
     this.overlay = loadOverlay(this.key);
+    this.base = this.layoutForVisible();
+  }
+
+  // Layout is computed over the nodes that will actually be DRAWN. Ranking the hidden ones too
+  // leaves their slots empty: the remaining boxes keep positions chosen around 143 invisible
+  // neighbours, so the board reads as scattered and every edge spans a hole. Recomputed whenever
+  // visibility changes — the layered ranks only mean anything for the graph on screen.
+  private layoutForVisible(): Record<string, Point> {
+    if (this.showFunctions()) return initialPositions(this.seed);
+    const nodes = this.seed.nodes.filter((n) => n.kind !== "function");
+    const keep = new Set(nodes.map((n) => n.key));
+    return initialPositions({
+      ...this.seed,
+      nodes,
+      relations: this.seed.relations.filter((r) => keep.has(r.src) && keep.has(r.dst)),
+    });
   }
 
   // The box's top-left anchor. Anchoring at the corner (not the centre) keeps the
@@ -111,20 +126,26 @@ export class Store {
     this.scheduleSave();
   }
 
+  // Functions are hidden until asked for. A repo written as module-level functions over frozen
+  // data — which is the common shape — has two to three times as many functions as types, and
+  // three times as many call edges as type relations, so showing them first buries the
+  // architecture the reader opened the board to see.
   showFunctions(): boolean {
-    return !this.overlay.hideFunctions;
+    return this.overlay.showFunctions === true;
   }
   toggleFunctions(): void {
-    this.overlay.hideFunctions = !this.overlay.hideFunctions;
+    this.overlay.showFunctions = !this.showFunctions();
+    this.base = this.layoutForVisible(); // ranks are only meaningful for the visible graph
     this.scheduleSave();
   }
 
-  // Auto class-docstring notes: a global on/off, plus a per-class position override.
+  // Auto class-docstring notes: a global on/off, plus a per-class position override. Off first:
+  // a docstring card carries a paragraph, and a screenful of paragraphs hides the boxes.
   showDocs(): boolean {
-    return !this.overlay.hideDocs;
+    return this.overlay.showDocs === true;
   }
   toggleDocs(): void {
-    this.overlay.hideDocs = !this.overlay.hideDocs;
+    this.overlay.showDocs = !this.showDocs();
     this.scheduleSave();
   }
   docNotePos(key: string): Point | null {
@@ -294,8 +315,12 @@ function normalize(o: Partial<Overlay>): Overlay {
     images: o.images ?? [],
     groups: o.groups ?? [],
     docNotes: o.docNotes ?? {},
-    hideDocs: o.hideDocs,
-    hideFunctions: o.hideFunctions,
+    // A board saved under the old inverted flags carries `hide*`. Its author's choice is what
+    // matters, so translate rather than drop: `hideX: false` meant "show", and a board with
+    // neither field is simply new and takes the current default (off).
+    showDocs: o.showDocs ?? (o.hideDocs === undefined ? undefined : !o.hideDocs),
+    showFunctions:
+      o.showFunctions ?? (o.hideFunctions === undefined ? undefined : !o.hideFunctions),
     edgeMode: o.edgeMode,
   };
 }

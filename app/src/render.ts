@@ -2,7 +2,17 @@
 // renderer stateless; interaction listeners live on the container, so replacing
 // innerHTML never detaches them.
 
-import { borderPoint, dims, edgeGeom, metrics, orthogonalGeom, type Box, type Lane } from "./geometry";
+import {
+  axis,
+  borderPoint,
+  clearChannel,
+  dims,
+  edgeGeom,
+  metrics,
+  orthogonalGeom,
+  type Box,
+  type Lane,
+} from "./geometry";
 import { edgeKey, edgeStyle } from "./edge";
 import { renderGroups, renderImages, renderNotes, wrap } from "./renderItems";
 import type { Point, SeedNode , SeedRelation } from "./model";
@@ -56,12 +66,19 @@ export function renderScene(store: Store): string {
     const s = boxes.get(rel.src);
     const d = boxes.get(rel.dst);
     if (!s || !d) return null;
-    const dx = d.cx - s.cx;
-    const dy = d.cy - s.cy;
-    const horizontal = Math.abs(dx) >= Math.abs(dy);
-    const sign = horizontal ? Math.sign(dx) : Math.sign(dy);
-    return `${rel.src}|${horizontal ? "h" : "v"}|${sign}`;
+    // Same axis decision the geometry will make. Deciding it independently here put edges in a
+    // corridor they do not actually travel down, so their lanes were spread along the wrong side.
+    const a = axis(s, d);
+    const sign = Math.sign(a === "h" ? d.cx - s.cx : d.cy - s.cy);
+    return `${rel.src}|${a}|${sign}`;
   };
+  const channelFor = (rel: SeedRelation): [number, number] | undefined =>
+    clearChannel(
+      boxes.get(rel.src)!,
+      boxes.get(rel.dst)!,
+      [...boxes].filter(([k]) => k !== rel.src && k !== rel.dst).map(([, b]) => b),
+    );
+
   const lanes = new Map<string, Lane>();
   const groups = new Map<string, SeedRelation[]>();
   for (const rel of store.seed.relations) {
@@ -77,7 +94,7 @@ export function renderScene(store: Store): string {
       return A.cx - B.cx || A.cy - B.cy;
     });
     ordered.forEach((rel, index) =>
-      lanes.set(edgeKey(rel), { index, count: ordered.length }),
+      lanes.set(edgeKey(rel), { index, count: ordered.length, channel: channelFor(rel) }),
     );
   }
 
