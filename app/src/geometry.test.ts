@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { borderPoint, edgeGeom, midpoint, type Box } from "./geometry";
+import { borderPoint, edgeGeom, midpoint, orthogonalGeom, type Box } from "./geometry";
 
 describe("borderPoint", () => {
   const box: Box = { cx: 0, cy: 0, w: 100, h: 60 };
@@ -33,5 +33,44 @@ describe("edgeGeom", () => {
     expect(bx).toBeCloseTo(g.handle.x, 1);
     expect(by).toBeCloseTo(g.handle.y, 1);
     expect(g.handle).toEqual({ x: 200 + 30, y: 0 - 80 });
+  });
+});
+
+describe("orthogonalGeom lanes", () => {
+  // One parent above four children — the fan that used to draw four edges on one line.
+  // Kept narrow and tall on purpose: orthogonalGeom picks the axis with the larger separation,
+  // so a fan that is wider than it is deep routes sideways and none of this applies.
+  const parent: Box = { cx: 400, cy: 100, w: 200, h: 80 }; // bottom edge at y=140
+  const kids: Box[] = [0, 1, 2, 3].map((i) => ({ cx: 250 + i * 100, cy: 400, w: 90, h: 60 }));
+  const bandTop = 140; // parent bottom
+  const bandBottom = 370; // child top (400 - 30)
+  // The corner is the Q control point. The preceding L is pulled back by the corner radius,
+  // so reading that instead reports a turn ~12px off — enough to look like the band was missed.
+  const turnY = (path: string): number => Number(/Q [\d.-]+ ([\d.-]+)/.exec(path)![1]);
+
+  it("puts the turn at the middle of the clear band when there is no lane", () => {
+    const g = orthogonalGeom(parent, kids[0]!, [0, 0]);
+    expect(turnY(g.path)).toBeCloseTo((bandTop + bandBottom) / 2, 0);
+  });
+
+  it("gives every edge of a fan its own turn", () => {
+    const ys = kids.map((k, i) => turnY(orthogonalGeom(parent, k, [0, 0], { index: i, count: 4 }).path));
+    expect(new Set(ys).size).toBe(4);
+  });
+
+  it("keeps every turn strictly inside the band, so no run can land on a box", () => {
+    for (const count of [1, 4, 12]) {
+      for (let i = 0; i < count; i++) {
+        const y = turnY(orthogonalGeom(parent, kids[0]!, [0, 0], { index: i, count }).path);
+        expect(y).toBeGreaterThan(bandTop);
+        expect(y).toBeLessThan(bandBottom);
+      }
+    }
+  });
+
+  it("still honours a dragged bend on top of the lane", () => {
+    const plain = turnY(orthogonalGeom(parent, kids[1]!, [0, 0], { index: 1, count: 4 }).path);
+    const bent = turnY(orthogonalGeom(parent, kids[1]!, [0, 25], { index: 1, count: 4 }).path);
+    expect(bent - plain).toBeCloseTo(25, 0);
   });
 });

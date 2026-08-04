@@ -101,7 +101,10 @@ export class Store {
   }
 
   edgeMode(): "curved" | "orthogonal" {
-    return this.overlay.edgeMode ?? "curved";
+    // 90° is the default. The layout is layered, so a right-angle run can be placed in the clear
+    // band between two ranks and provably misses every box; a curve aimed at the midpoint has no
+    // such guarantee and, on a dense board, crosses whatever happens to sit between its ends.
+    return this.overlay.edgeMode ?? "orthogonal";
   }
   toggleEdgeMode(): void {
     this.overlay.edgeMode = this.edgeMode() === "curved" ? "orthogonal" : "curved";

@@ -134,10 +134,30 @@ export function edgeGeom(src: Box, dst: Box, bend: [number, number]): EdgeGeom {
   return { path, handle: M, p0, p1, dirStart: unit(p0, ctrl), dirEnd: unit(ctrl, p1) };
 }
 
+// Which of a group of edges sharing a corridor this one is, so their turns do not coincide.
+export interface Lane {
+  index: number; // 0-based position within the group
+  count: number; // how many edges share the corridor
+}
+
+// Spread a group's turns evenly across the clear band between the two boxes. One parent with
+// four children used to put all four elbows on the same line: four edges drawn on top of each
+// other, reading as one. Fractions of the band (rather than a fixed pixel step) keep every
+// turn inside it, so no amount of fan-out can push a run onto a box.
+function laneAt(a: number, b: number, lane: Lane | undefined): number {
+  const f = lane ? (lane.index + 1) / (lane.count + 1) : 0.5;
+  return a + (b - a) * f;
+}
+
 // Right-angle ("orthogonal") routing with rounded corners, like an architecture diagram.
 // The line leaves and enters the boxes on their facing sides and turns once; the draggable
 // handle sits on the middle segment, so the elbow can still be nudged along its axis.
-export function orthogonalGeom(src: Box, dst: Box, bend: [number, number]): EdgeGeom {
+export function orthogonalGeom(
+  src: Box,
+  dst: Box,
+  bend: [number, number],
+  lane?: Lane,
+): EdgeGeom {
   const dx = dst.cx - src.cx;
   const dy = dst.cy - src.cy;
   const R = 12;
@@ -149,14 +169,14 @@ export function orthogonalGeom(src: Box, dst: Box, bend: [number, number]): Edge
     const s = dx >= 0 ? 1 : -1;
     p0 = { x: src.cx + (s * src.w) / 2, y: src.cy };
     p1 = { x: dst.cx - (s * dst.w) / 2, y: dst.cy };
-    const mx = (p0.x + p1.x) / 2 + bend[0];
+    const mx = laneAt(p0.x, p1.x, lane) + bend[0];
     corners = [{ x: mx, y: p0.y }, { x: mx, y: p1.y }];
     handle = { x: mx, y: (p0.y + p1.y) / 2 };
   } else {
     const s = dy >= 0 ? 1 : -1;
     p0 = { x: src.cx, y: src.cy + (s * src.h) / 2 };
     p1 = { x: dst.cx, y: dst.cy - (s * dst.h) / 2 };
-    const my = (p0.y + p1.y) / 2 + bend[1];
+    const my = laneAt(p0.y, p1.y, lane) + bend[1];
     corners = [{ x: p0.x, y: my }, { x: p1.x, y: my }];
     handle = { x: (p0.x + p1.x) / 2, y: my };
   }

@@ -2,10 +2,10 @@
 // renderer stateless; interaction listeners live on the container, so replacing
 // innerHTML never detaches them.
 
-import { borderPoint, dims, edgeGeom, metrics, orthogonalGeom, type Box } from "./geometry";
+import { borderPoint, dims, edgeGeom, metrics, orthogonalGeom, type Box, type Lane } from "./geometry";
 import { edgeKey, edgeStyle } from "./edge";
 import { renderGroups, renderImages, renderNotes, wrap } from "./renderItems";
-import type { Point, SeedNode } from "./model";
+import type { Point, SeedNode , SeedRelation } from "./model";
 import type { Store } from "./store";
 
 const { LINE_H, TITLE_H, PAD } = metrics;
@@ -49,6 +49,38 @@ export function renderScene(store: Store): string {
     boxes.set(node.key, { cx: a.x + d.w / 2, cy: a.y + d.h / 2, w: d.w, h: d.h });
   }
 
+  // Edges leaving the same box in the same direction share a corridor, so their turns must be
+  // spread across it. Grouping by (source, axis, sign) is what a reader perceives as "one fan":
+  // the four children of a class, not every edge in the diagram.
+  const corridor = (rel: SeedRelation): string | null => {
+    const s = boxes.get(rel.src);
+    const d = boxes.get(rel.dst);
+    if (!s || !d) return null;
+    const dx = d.cx - s.cx;
+    const dy = d.cy - s.cy;
+    const horizontal = Math.abs(dx) >= Math.abs(dy);
+    const sign = horizontal ? Math.sign(dx) : Math.sign(dy);
+    return `${rel.src}|${horizontal ? "h" : "v"}|${sign}`;
+  };
+  const lanes = new Map<string, Lane>();
+  const groups = new Map<string, SeedRelation[]>();
+  for (const rel of store.seed.relations) {
+    const c = corridor(rel);
+    if (c) groups.set(c, [...(groups.get(c) ?? []), rel]);
+  }
+  for (const [, rels] of groups) {
+    // Sorted by where the far end sits, so lane order matches what the eye expects and a
+    // re-render never reshuffles the fan.
+    const ordered = [...rels].sort((a, b) => {
+      const A = boxes.get(a.dst)!;
+      const B = boxes.get(b.dst)!;
+      return A.cx - B.cx || A.cy - B.cy;
+    });
+    ordered.forEach((rel, index) =>
+      lanes.set(edgeKey(rel), { index, count: ordered.length }),
+    );
+  }
+
   const edgeParts: string[] = [];
   const handleParts: string[] = [];
   for (const rel of store.seed.relations) {
@@ -59,7 +91,7 @@ export function renderScene(store: Store): string {
     const bend = store.edgeBend(key);
     const geom =
       store.edgeModeFor(key) === "orthogonal"
-        ? orthogonalGeom(src, dst, bend)
+        ? orthogonalGeom(src, dst, bend, lanes.get(key))
         : edgeGeom(src, dst, bend);
     const st = edgeStyle(rel);
     const dash = st.dash ? ` stroke-dasharray="${st.dash}"` : "";
