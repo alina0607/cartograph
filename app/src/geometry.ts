@@ -145,10 +145,12 @@ export interface Lane {
   channel?: [number, number];
 }
 
-// Spread a group's turns evenly across the clear channel. One parent with four children used to
-// put all four elbows on the same line: four edges drawn on top of each other, reading as one.
-// Fractions of the channel (rather than a fixed pixel step) keep every turn inside it, so no
-// amount of fan-out can push a run onto a box.
+// Spread the turns evenly across the clear channel. Fractions of the channel (rather than a fixed
+// pixel step) keep every turn inside it, so no amount of fan-out can push a run onto a box.
+//
+// The thing being spread is a BUS, not an edge: every edge of one kind leaving one box shares a
+// lane on purpose, which draws them as a single trunk that branches at the turn. Spreading them
+// individually is what produced a dozen near-parallel lines a reader cannot follow.
 function laneAt(a: number, b: number, lane: Lane | undefined): number {
   const [lo, hi] = lane?.channel ?? [a, b];
   const f = lane ? (lane.index + 1) / (lane.count + 1) : 0.5;
@@ -213,6 +215,33 @@ export function clearChannel(
   }
   if (hi - lo < 8) return undefined;
   return near < far ? [lo, hi] : [hi, lo];
+}
+
+// The band one bus may turn in: what is left of the space between the source and EVERY destination
+// it feeds, so the shared trunk clears all of them at once. One member's band is not enough — the
+// widest child sets a band the shallowest child's box already occupies.
+//
+// The bus's own destinations are not obstacles: the trunk is not allowed past their near edge
+// anyway, which each member's `far` bound already states, and treating them as obstacles would
+// refuse to merge exactly the dense fans that need it most.
+export function busChannel(
+  src: Box,
+  dsts: Box[],
+  others: Iterable<Box>,
+): [number, number] | undefined {
+  const obstacles = [...others];
+  let lo = -Infinity;
+  let hi = Infinity;
+  let ascending = true;
+  for (const dst of dsts) {
+    const ch = clearChannel(src, dst, obstacles);
+    if (!ch) return undefined; // no clean trunk exists; the caller falls back to separate runs
+    ascending = ch[0] <= ch[1];
+    lo = Math.max(lo, Math.min(ch[0], ch[1]));
+    hi = Math.min(hi, Math.max(ch[0], ch[1]));
+  }
+  if (hi - lo < 8) return undefined;
+  return ascending ? [lo, hi] : [hi, lo];
 }
 
 // Right-angle ("orthogonal") routing with rounded corners, like an architecture diagram.

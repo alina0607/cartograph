@@ -5,6 +5,7 @@
 import {
   axis,
   borderPoint,
+  busChannel,
   clearChannel,
   dims,
   edgeGeom,
@@ -72,30 +73,57 @@ export function renderScene(store: Store): string {
     const sign = Math.sign(a === "h" ? d.cx - s.cx : d.cy - s.cy);
     return `${rel.src}|${a}|${sign}`;
   };
-  const channelFor = (rel: SeedRelation): [number, number] | undefined =>
-    clearChannel(
-      boxes.get(rel.src)!,
-      boxes.get(rel.dst)!,
-      [...boxes].filter(([k]) => k !== rel.src && k !== rel.dst).map(([, b]) => b),
-    );
-
-  const lanes = new Map<string, Lane>();
-  const groups = new Map<string, SeedRelation[]>();
+  // Within a corridor, the edges of ONE kind are drawn as one bus: they share a lane, so their
+  // stem and trunk coincide and the fan reads as a single line that branches at the turn. Kinds
+  // stay apart because they are drawn in different colours and styles — a shared trunk could only
+  // show one of them. So a corridor holds as many lanes as it has kinds, not as it has edges.
+  const buses = new Map<string, SeedRelation[]>();
   for (const rel of store.seed.relations) {
     const c = corridor(rel);
-    if (c) groups.set(c, [...(groups.get(c) ?? []), rel]);
+    if (c) {
+      const k = `${c}|${rel.kind}`;
+      buses.set(k, [...(buses.get(k) ?? []), rel]);
+    }
   }
-  for (const [, rels] of groups) {
-    // Sorted by where the far end sits, so lane order matches what the eye expects and a
-    // re-render never reshuffles the fan.
-    const ordered = [...rels].sort((a, b) => {
-      const A = boxes.get(a.dst)!;
-      const B = boxes.get(b.dst)!;
-      return A.cx - B.cx || A.cy - B.cy;
+  const byCorridor = new Map<string, SeedRelation[][]>();
+  for (const [k, rels] of buses) {
+    const c = k.slice(0, k.lastIndexOf("|"));
+    byCorridor.set(c, [...(byCorridor.get(c) ?? []), rels]);
+  }
+
+  const lanes = new Map<string, Lane>();
+  const near = (rels: SeedRelation[]): number =>
+    Math.min(...rels.map((r) => boxes.get(r.dst)!.cx));
+  for (const [, group] of byCorridor) {
+    // Ordered by where the nearest far end sits, so lane order matches what the eye expects and a
+    // re-render never reshuffles them.
+    const ordered = [...group].sort((a, b) => near(a) - near(b));
+    ordered.forEach((rels, index) => {
+      const src = boxes.get(rels[0]!.src)!;
+      const dsts = rels.map((r) => boxes.get(r.dst)!);
+      const own = new Set([rels[0]!.src, ...rels.map((r) => r.dst)]);
+      const others = [...boxes].filter(([k]) => !own.has(k)).map(([, b]) => b);
+      const channel = busChannel(src, dsts, others);
+      if (channel) {
+        const lane = { index, count: ordered.length, channel };
+        for (const rel of rels) lanes.set(edgeKey(rel), lane); // one lane -> one trunk
+        return;
+      }
+      // No band clears every destination at once. Rather than draw a trunk through a box, fall
+      // back to what the bus replaced: each edge turns in its own pairwise-clear band.
+      const spread = [...rels].sort((a, b) => boxes.get(a.dst)!.cx - boxes.get(b.dst)!.cx);
+      spread.forEach((rel, i) =>
+        lanes.set(edgeKey(rel), {
+          index: i,
+          count: spread.length,
+          channel: clearChannel(
+            src,
+            boxes.get(rel.dst)!,
+            [...boxes].filter(([k]) => k !== rel.src && k !== rel.dst).map(([, b]) => b),
+          ),
+        }),
+      );
     });
-    ordered.forEach((rel, index) =>
-      lanes.set(edgeKey(rel), { index, count: ordered.length, channel: channelFor(rel) }),
-    );
   }
 
   const edgeParts: string[] = [];

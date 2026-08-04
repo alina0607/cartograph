@@ -8,7 +8,7 @@
 // them: nothing overlaps, and no connector passes through a box it is not attached to.
 
 import { describe, expect, it } from "vitest";
-import { clearChannel, dims, orthogonalGeom, type Box } from "./geometry";
+import { busChannel, clearChannel, dims, orthogonalGeom, type Box } from "./geometry";
 import { initialPositions } from "./layout";
 import type { Seed, SeedNode, SeedRelation } from "./model";
 
@@ -118,14 +118,24 @@ describe("a drawn board stays readable", () => {
 
   it("routes every relationship without crossing an unrelated class", () => {
     const crossings: string[] = [];
+    // Grouped the way the renderer groups them, and routed on the bus channel, because that is
+    // the path the product draws. Checking a pairwise route instead would pass while the shared
+    // trunk — placed by a band that has to clear every child at once — cuts through a box.
+    const bus = new Map<string, SeedRelation[]>();
+    for (const r of seed.relations) {
+      const k = `${r.src}|${r.kind}`;
+      bus.set(k, [...(bus.get(k) ?? []), r]);
+    }
     for (const r of seed.relations) {
       const src = boxes.get(r.src)!;
       const dst = boxes.get(r.dst)!;
-      // Same channel the renderer computes — the test must exercise the shipped path, not a
-      // simpler one, or it passes while the product crosses boxes.
-      const others = [...boxes].filter(([k]) => k !== r.src && k !== r.dst).map(([, b]) => b);
-      const lane = { index: 0, count: 1, channel: clearChannel(src, dst, others) };
-      const path = orthogonalGeom(src, dst, [0, 0], lane).path;
+      const siblings = bus.get(`${r.src}|${r.kind}`)!;
+      const own = new Set([r.src, ...siblings.map((s) => s.dst)]);
+      const others = [...boxes].filter(([k]) => !own.has(k)).map(([, b]) => b);
+      const channel =
+        busChannel(src, siblings.map((s) => boxes.get(s.dst)!), others) ??
+        clearChannel(src, dst, [...boxes].filter(([k]) => !own.has(k)).map(([, b]) => b));
+      const path = orthogonalGeom(src, dst, [0, 0], { index: 0, count: 1, channel }).path;
       for (const [key, box] of boxes) {
         if (key === r.src || key === r.dst) continue;
         if (segments(path).some((s) => cuts(s, box))) {
@@ -136,19 +146,37 @@ describe("a drawn board stays readable", () => {
     expect(crossings).toEqual([]);
   });
 
-  it("keeps a fan's runs apart, so five relationships do not read as one", () => {
+  // One source, one kind, five children: five near-parallel runs are unreadable, so they are
+  // drawn as one trunk that branches. The property to hold is BOTH halves of that — the shared
+  // run really is shared (one turn height, not five within a few pixels, which reads as fraying)
+  // and each child still gets its own branch.
+  it("merges a same-kind fan into one shared trunk with a branch per child", () => {
     const root = boxes.get("m/Root.py#Root")!;
     const kids = ["FanA", "FanB", "FanC", "FanD", "FanE"].map((n) => boxes.get(`m/${n}.py#${n}`)!);
-    const turns = kids.map((k, i) => {
-      const others = [...boxes.values()].filter((b) => b !== root && b !== k);
-      const path = orthogonalGeom(root, k, [0, 0], {
-        index: i,
-        count: kids.length,
-        channel: clearChannel(root, k, others),
-      }).path;
-      return /Q ([\d.-]+) ([\d.-]+)/.exec(path)!.slice(1).join(",");
-    });
-    expect(new Set(turns).size).toBe(kids.length);
+    const others = [...boxes.values()].filter((b) => b !== root && !kids.includes(b));
+    const channel = busChannel(root, kids, others);
+    expect(channel).toBeDefined();
+
+    const lane = { index: 0, count: 1, channel };
+    const paths = kids.map((k) => orthogonalGeom(root, k, [0, 0], lane).path);
+    const trunkY = paths.map((p) => Number(/Q [\d.-]+ ([\d.-]+)/.exec(p)![1]));
+    expect(new Set(trunkY).size).toBe(1);
+    const branchX = paths.map((p) => Number(/([\d.-]+) [\d.-]+$/.exec(p)![1]));
+    expect(new Set(branchX).size).toBe(kids.length);
+  });
+
+  it("gives each relationship kind its own trunk, since one line cannot carry two styles", () => {
+    const root = boxes.get("m/Root.py#Root")!;
+    const kids = ["FanA", "FanB"].map((n) => boxes.get(`m/${n}.py#${n}`)!);
+    const others = [...boxes.values()].filter((b) => b !== root && !kids.includes(b));
+    const channel = busChannel(root, kids, others);
+    const turn = (index: number): number =>
+      Number(
+        /Q [\d.-]+ ([\d.-]+)/.exec(
+          orthogonalGeom(root, kids[0]!, [0, 0], { index, count: 2, channel }).path,
+        )![1],
+      );
+    expect(turn(0)).not.toBe(turn(1));
   });
 
   it("never lets a class label spill past its own box", () => {
