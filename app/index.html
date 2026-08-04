@@ -122,6 +122,14 @@
         background: rgba(250, 246, 253, 0.9); border: 1px solid rgba(120, 90, 160, 0.16);
         border-radius: 10px; font: 12.5px/1.55 var(--mono); color: #3a3352; white-space: pre;
       }
+      /* An exported board has no dev server behind it: scanning, browsing and loading another
+         document would all fail, so they are not offered. Everything that edits the board stays. */
+      body.standalone #browse,
+      body.standalone #path,
+      body.standalone #scan,
+      body.standalone #load {
+        display: none;
+      }
     </style>
   </head>
   <body>
@@ -138,6 +146,7 @@
       <button id="fn">functions</button>
       <button id="docs">docs</button>
       <button id="save">save</button>
+      <button id="export-html">export html</button>
       <button id="load">load</button>
       <button id="reset">reset</button>
       <input id="file" type="file" accept="application/json" hidden />
@@ -145,6 +154,10 @@
     </div>
     <div id="app"></div>
     <div id="legend"></div>
+    <!-- An exported board inlines its whole document here, so opening that file needs no server
+         and no re-scan: the layout that comes back is exactly the one that was exported. Stays
+         `null` in the live app — the export rewrites this element's text and nothing else. -->
+    <script id="cartograph-doc" type="application/json">null</script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

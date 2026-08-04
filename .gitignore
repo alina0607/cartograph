@@ -21,3 +21,6 @@ app/dist/
 # Local scratch output
 *.seed.json
 scratch/
+
+# built by scripts/build-viewer.mjs — regenerate, never commit
+app/public/viewer.html

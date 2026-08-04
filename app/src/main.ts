@@ -14,6 +14,9 @@ const legendEl = document.getElementById("legend")!;
 
 let store: Store | undefined;
 let byKey = new Map<string, SeedNode>();
+// An exported file IS the viewer template, so it can re-export itself after a rearrange with no
+// server and no network. Captured before the first render, while the DOM is still the empty shell.
+let selfTemplate: string | undefined;
 
 const rerender = () => {
   if (store) app.innerHTML = renderScene(store);
@@ -175,6 +178,7 @@ async function boot(): Promise<void> {
     }
   });
   document.getElementById("save")!.addEventListener("click", saveDoc);
+  document.getElementById("export-html")!.addEventListener("click", () => void exportHtml());
   const fileInput = document.getElementById("file") as HTMLInputElement;
   document.getElementById("load")!.addEventListener("click", () => fileInput.click());
   fileInput.addEventListener("change", () => {
@@ -203,6 +207,18 @@ async function boot(): Promise<void> {
       void addImageFromFile(f, screenToWorld(e.clientX, e.clientY));
     }
   });
+
+  // An exported board carries its own document, and it outranks everything: opening that file
+  // must show the layout it was exported with, not re-scan a folder that may have moved on (or
+  // not exist on this machine at all). The controls that need the dev server are hidden — an
+  // exported file is a document, not a scanner.
+  const inlined = embeddedDoc();
+  if (inlined) {
+    document.body.classList.add("standalone");
+    selfTemplate = document.documentElement.outerHTML; // still pristine: nothing rendered yet
+    mountDoc(inlined, "from this file");
+    return;
+  }
 
   // ?scan=/path (from the `cartograph` CLI) wins over the last-used folder.
   const queryScan = new URLSearchParams(location.search).get("scan");
@@ -276,32 +292,86 @@ function screenToWorld(clientX: number, clientY: number): { x: number; y: number
   return { x: (clientX - rect.left - v.panX) / v.zoom, y: (clientY - rect.top - v.panY) / v.zoom };
 }
 
-function saveDoc(): void {
-  if (!store) return;
-  const blob = new Blob([JSON.stringify(store.toDocument(), null, 2)], {
-    type: "application/json",
-  });
+function download(blob: Blob, name: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `cartograph-${safeName(store.scope)}.json`;
+  a.download = name;
   a.click();
   URL.revokeObjectURL(url);
 }
 
+function saveDoc(): void {
+  if (!store) return;
+  const json = JSON.stringify(store.toDocument(), null, 2);
+  download(new Blob([json], { type: "application/json" }), `cartograph-${safeName(store.scope)}.json`);
+}
+
+// The one place a saved document becomes the live board. `load` (a .json) and an exported .html
+// (its inlined copy) both arrive here, so the two cannot restore a layout differently — which is
+// the entire promise of the export.
+function mountDoc(doc: CodeboardDoc, origin: string): void {
+  if (!doc.seed || !doc.overlay) throw new Error("not a cartograph file");
+  store = new Store(doc.seed, doc.scope || "imported");
+  store.setOverlay(doc.overlay); // deliberately no fitToContent: the saved view IS the layout
+  byKey = new Map(doc.seed.nodes.map((n) => [n.key, n]));
+  pathInput.value = doc.scope || "";
+  updateLegend(doc.seed);
+  updateLinesLabel();
+  rerender();
+  setStatus(`${doc.seed.nodes.length} classes ${origin}`);
+}
+
 async function loadDoc(file: File): Promise<void> {
   try {
-    const doc = JSON.parse(await file.text()) as CodeboardDoc;
-    if (!doc.seed || !doc.overlay) throw new Error("not a cartograph file");
-    store = new Store(doc.seed, doc.scope || "imported");
-    store.setOverlay(doc.overlay);
-    byKey = new Map(doc.seed.nodes.map((n) => [n.key, n]));
-    pathInput.value = doc.scope || "";
-    rerender();
-    setStatus(`loaded ${doc.seed.nodes.length} classes from file`);
+    mountDoc(JSON.parse(await file.text()) as CodeboardDoc, "loaded from file");
   } catch (e) {
     setStatus((e as Error).message || "load failed");
   }
+}
+
+// A document inlined by `export html`; `null` in the live app.
+function embeddedDoc(): CodeboardDoc | null {
+  const text = document.getElementById("cartograph-doc")?.textContent;
+  if (!text) return null;
+  try {
+    const doc = JSON.parse(text) as CodeboardDoc | null;
+    return doc?.seed ? doc : null;
+  } catch {
+    return null;
+  }
+}
+
+// Export = this board's document poured into the built single-file viewer. The viewer is the app
+// itself, bundled — not a second renderer — so an exported file cannot drift from the live canvas.
+async function exportHtml(): Promise<void> {
+  if (!store) return;
+  let template: string;
+  if (selfTemplate) {
+    template = selfTemplate; // re-exporting an exported file: this page is already the template
+  } else {
+    try {
+      const res = await fetch(`${import.meta.env.BASE_URL}viewer.html`);
+      if (!res.ok) throw new Error();
+      template = await res.text();
+    } catch {
+      setStatus("no viewer template yet — run `npm run build:viewer` once, then export again");
+      return;
+    }
+  }
+  // Escaping `<` matters: a docstring or a method's source can contain `</script>`, which would
+  // otherwise close the tag early and leave a truncated document that still parses as JSON.
+  const payload = JSON.stringify(store.toDocument()).replace(/</g, "\\u003c");
+  const filled = template.replace(
+    /(<script id="cartograph-doc" type="application\/json">)[\s\S]*?(<\/script>)/,
+    (_m, open: string, close: string) => open + payload + close,
+  );
+  if (filled === template) {
+    setStatus("that viewer template has no document slot — rebuild it");
+    return;
+  }
+  download(new Blob([filled], { type: "text/html" }), `cartograph-${safeName(store.scope)}.html`);
+  setStatus("exported — open that file anywhere and the layout comes back");
 }
 
 async function addImageFromFile(file: File, at?: { x: number; y: number }): Promise<void> {

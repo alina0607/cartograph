@@ -6,10 +6,11 @@
   "description": "cartograph's interactive UML/dependency study canvas",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "lint": "tsc --noEmit && tsc -p tsconfig.node.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:viewer": "npm run build && node scripts/build-viewer.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.1.2",
