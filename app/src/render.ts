@@ -3,20 +3,17 @@
 // innerHTML never detaches them.
 
 import {
-  axis,
   borderPoint,
-  busChannel,
-  clearChannel,
   dims,
   edgeGeom,
   metrics,
-  orthogonalGeom,
+  polylineGeom,
   type Box,
-  type Lane,
 } from "./geometry";
+import { routeEdges } from "./route";
 import { edgeKey, edgeStyle } from "./edge";
 import { renderGroups, renderImages, renderNotes, wrap } from "./renderItems";
-import type { Point, SeedNode , SeedRelation } from "./model";
+import type { Point, SeedNode } from "./model";
 import type { Store } from "./store";
 
 const { LINE_H, TITLE_H, PAD } = metrics;
@@ -60,71 +57,10 @@ export function renderScene(store: Store): string {
     boxes.set(node.key, { cx: a.x + d.w / 2, cy: a.y + d.h / 2, w: d.w, h: d.h });
   }
 
-  // Edges leaving the same box in the same direction share a corridor, so their turns must be
-  // spread across it. Grouping by (source, axis, sign) is what a reader perceives as "one fan":
-  // the four children of a class, not every edge in the diagram.
-  const corridor = (rel: SeedRelation): string | null => {
-    const s = boxes.get(rel.src);
-    const d = boxes.get(rel.dst);
-    if (!s || !d) return null;
-    // Same axis decision the geometry will make. Deciding it independently here put edges in a
-    // corridor they do not actually travel down, so their lanes were spread along the wrong side.
-    const a = axis(s, d);
-    const sign = Math.sign(a === "h" ? d.cx - s.cx : d.cy - s.cy);
-    return `${rel.src}|${a}|${sign}`;
-  };
-  // Within a corridor, the edges of ONE kind are drawn as one bus: they share a lane, so their
-  // stem and trunk coincide and the fan reads as a single line that branches at the turn. Kinds
-  // stay apart because they are drawn in different colours and styles — a shared trunk could only
-  // show one of them. So a corridor holds as many lanes as it has kinds, not as it has edges.
-  const buses = new Map<string, SeedRelation[]>();
-  for (const rel of store.seed.relations) {
-    const c = corridor(rel);
-    if (c) {
-      const k = `${c}|${rel.kind}`;
-      buses.set(k, [...(buses.get(k) ?? []), rel]);
-    }
-  }
-  const byCorridor = new Map<string, SeedRelation[][]>();
-  for (const [k, rels] of buses) {
-    const c = k.slice(0, k.lastIndexOf("|"));
-    byCorridor.set(c, [...(byCorridor.get(c) ?? []), rels]);
-  }
-
-  const lanes = new Map<string, Lane>();
-  const near = (rels: SeedRelation[]): number =>
-    Math.min(...rels.map((r) => boxes.get(r.dst)!.cx));
-  for (const [, group] of byCorridor) {
-    // Ordered by where the nearest far end sits, so lane order matches what the eye expects and a
-    // re-render never reshuffles them.
-    const ordered = [...group].sort((a, b) => near(a) - near(b));
-    ordered.forEach((rels, index) => {
-      const src = boxes.get(rels[0]!.src)!;
-      const dsts = rels.map((r) => boxes.get(r.dst)!);
-      const own = new Set([rels[0]!.src, ...rels.map((r) => r.dst)]);
-      const others = [...boxes].filter(([k]) => !own.has(k)).map(([, b]) => b);
-      const channel = busChannel(src, dsts, others);
-      if (channel) {
-        const lane = { index, count: ordered.length, channel };
-        for (const rel of rels) lanes.set(edgeKey(rel), lane); // one lane -> one trunk
-        return;
-      }
-      // No band clears every destination at once. Rather than draw a trunk through a box, fall
-      // back to what the bus replaced: each edge turns in its own pairwise-clear band.
-      const spread = [...rels].sort((a, b) => boxes.get(a.dst)!.cx - boxes.get(b.dst)!.cx);
-      spread.forEach((rel, i) =>
-        lanes.set(edgeKey(rel), {
-          index: i,
-          count: spread.length,
-          channel: clearChannel(
-            src,
-            boxes.get(rel.dst)!,
-            [...boxes].filter(([k]) => k !== rel.src && k !== rel.dst).map(([, b]) => b),
-          ),
-        }),
-      );
-    });
-  }
+  // Where every connector goes is one decision over the whole drawing, not one per pair of
+  // boxes: a path is only readable relative to the other paths sharing the same gap. route.ts
+  // owns it.
+  const routes = routeEdges(boxes, store.seed.relations, edgeKey, (k) => store.edgeBend(k));
 
   const edgeParts: string[] = [];
   const handleParts: string[] = [];
@@ -134,9 +70,10 @@ export function renderScene(store: Store): string {
     if (!src || !dst) continue;
     const key = edgeKey(rel);
     const bend = store.edgeBend(key);
+    const route = routes.get(key);
     const geom =
-      store.edgeModeFor(key) === "orthogonal"
-        ? orthogonalGeom(src, dst, bend, lanes.get(key))
+      store.edgeModeFor(key) === "orthogonal" && route
+        ? polylineGeom(route.points, route.handle)
         : edgeGeom(src, dst, bend);
     const st = edgeStyle(rel);
     const dash = st.dash ? ` stroke-dasharray="${st.dash}"` : "";

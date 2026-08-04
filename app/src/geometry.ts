@@ -134,156 +134,19 @@ export function edgeGeom(src: Box, dst: Box, bend: [number, number]): EdgeGeom {
   return { path, handle: M, p0, p1, dirStart: unit(p0, ctrl), dirEnd: unit(ctrl, p1) };
 }
 
-// Which of a group of edges sharing a corridor this one is, so their turns do not coincide.
-export interface Lane {
-  index: number; // 0-based position within the group
-  count: number; // how many edges share the corridor
-  // The clear channel the turn must stay inside, as [near, far] along the routing axis. The two
-  // endpoint boxes alone do not define it: a THIRD box, taller than the destination, reaches up
-  // into the space between them, and a run placed by pairwise reasoning goes straight through it.
-  // The caller sees every box, so it computes the channel and this only has to obey it.
-  channel?: [number, number];
-}
-
-// Spread the turns evenly across the clear channel. Fractions of the channel (rather than a fixed
-// pixel step) keep every turn inside it, so no amount of fan-out can push a run onto a box.
-//
-// The thing being spread is a BUS, not an edge: every edge of one kind leaving one box shares a
-// lane on purpose, which draws them as a single trunk that branches at the turn. Spreading them
-// individually is what produced a dozen near-parallel lines a reader cannot follow.
-function laneAt(a: number, b: number, lane: Lane | undefined): number {
-  const [lo, hi] = lane?.channel ?? [a, b];
-  const f = lane ? (lane.index + 1) / (lane.count + 1) : 0.5;
-  return lo + (hi - lo) * f;
-}
-
-// Which way a right-angle route should run. Separation decides it, not distance: two boxes on
-// different ranks are separated vertically, so the route leaves the bottom and enters the top —
-// the convention that makes a layered diagram readable, and the only one whose middle run lands
-// in the gutter between ranks.
-//
-// Picking the axis with the larger delta looked equivalent and is not. A parent and its
-// right-most child are often further apart sideways than downward, so that rule sent the route
-// out of the parent's SIDE and back into the child's side along the child's own centre line —
-// straight through every sibling in between. No choice of lane can avoid it, because that last
-// run's height is fixed by the destination, not by the routing.
-export function axis(src: Box, dst: Box): "h" | "v" {
-  const vGap = Math.max(dst.cy - dst.h / 2 - (src.cy + src.h / 2), src.cy - src.h / 2 - (dst.cy + dst.h / 2));
-  const hGap = Math.max(dst.cx - dst.w / 2 - (src.cx + src.w / 2), src.cx - src.w / 2 - (dst.cx + dst.w / 2));
-  if (vGap > 0) return "v"; // on different ranks — always go vertical
-  if (hGap > 0) return "h"; // side by side on one rank
-  return Math.abs(dst.cx - src.cx) >= Math.abs(dst.cy - src.cy) ? "h" : "v"; // overlapping
-}
-
-// What is left of the space between two boxes once every OTHER box the run passes over has been
-// excluded, as [near, far] along the routing axis. Reasoning from the two endpoints alone is what
-// let a fan's outer edges cross a taller sibling: the space looked clear because the sibling was
-// never consulted. Returns undefined when nothing usable is left — the ranks are packed too
-// tightly for a clean run, and the caller should fall back to the midpoint rather than pretend.
-//
-// Exported (and pure) so the readability test can assert the invariant with the same code the
-// renderer uses; behind a closure in the renderer it was untestable, which is how the crossing
-// shipped in the first place.
-export function clearChannel(
-  src: Box,
-  dst: Box,
-  others: Iterable<Box>,
-): [number, number] | undefined {
-  const horizontal = axis(src, dst) === "h";
-  const dir = Math.sign((horizontal ? dst.cx - src.cx : dst.cy - src.cy) || 1);
-  const near = horizontal ? src.cx + (dir * src.w) / 2 : src.cy + (dir * src.h) / 2;
-  const far = horizontal ? dst.cx - (dir * dst.w) / 2 : dst.cy - (dir * dst.h) / 2;
-  // Across the routing axis: the strip the run travels through, which decides who is in the way.
-  const a0 = horizontal ? src.cy : src.cx;
-  const a1 = horizontal ? dst.cy : dst.cx;
-  const spanLo = Math.min(a0, a1);
-  const spanHi = Math.max(a0, a1);
-  let lo = Math.min(near, far);
-  let hi = Math.max(near, far);
-  for (const b of others) {
-    const acrossHalf = (horizontal ? b.h : b.w) / 2;
-    const across = horizontal ? b.cy : b.cx;
-    if (across + acrossHalf < spanLo || across - acrossHalf > spanHi) continue;
-    const alongHalf = (horizontal ? b.w : b.h) / 2;
-    const along = horizontal ? b.cx : b.cy;
-    const bLo = along - alongHalf;
-    const bHi = along + alongHalf;
-    if (bHi <= lo || bLo >= hi) continue;
-    // Keep the roomier side of the obstruction.
-    if (bLo - lo >= hi - bHi) hi = Math.min(hi, bLo);
-    else lo = Math.max(lo, bHi);
-  }
-  if (hi - lo < 8) return undefined;
-  return near < far ? [lo, hi] : [hi, lo];
-}
-
-// The band one bus may turn in: what is left of the space between the source and EVERY destination
-// it feeds, so the shared trunk clears all of them at once. One member's band is not enough — the
-// widest child sets a band the shallowest child's box already occupies.
-//
-// The bus's own destinations are not obstacles: the trunk is not allowed past their near edge
-// anyway, which each member's `far` bound already states, and treating them as obstacles would
-// refuse to merge exactly the dense fans that need it most.
-export function busChannel(
-  src: Box,
-  dsts: Box[],
-  others: Iterable<Box>,
-): [number, number] | undefined {
-  const obstacles = [...others];
-  let lo = -Infinity;
-  let hi = Infinity;
-  let ascending = true;
-  for (const dst of dsts) {
-    const ch = clearChannel(src, dst, obstacles);
-    if (!ch) return undefined; // no clean trunk exists; the caller falls back to separate runs
-    ascending = ch[0] <= ch[1];
-    lo = Math.max(lo, Math.min(ch[0], ch[1]));
-    hi = Math.min(hi, Math.max(ch[0], ch[1]));
-  }
-  if (hi - lo < 8) return undefined;
-  return ascending ? [lo, hi] : [hi, lo];
-}
-
-// Right-angle ("orthogonal") routing with rounded corners, like an architecture diagram.
-// The line leaves and enters the boxes on their facing sides and turns once; the draggable
-// handle sits on the middle segment, so the elbow can still be nudged along its axis.
-export function orthogonalGeom(
-  src: Box,
-  dst: Box,
-  bend: [number, number],
-  lane?: Lane,
-): EdgeGeom {
-  const dx = dst.cx - src.cx;
-  const dy = dst.cy - src.cy;
-  const R = 12;
-  let p0: Point;
-  let p1: Point;
-  let corners: Point[];
-  let handle: Point;
-  if (axis(src, dst) === "h") {
-    const s = dx >= 0 ? 1 : -1;
-    p0 = { x: src.cx + (s * src.w) / 2, y: src.cy };
-    p1 = { x: dst.cx - (s * dst.w) / 2, y: dst.cy };
-    const mx = laneAt(p0.x, p1.x, lane) + bend[0];
-    corners = [{ x: mx, y: p0.y }, { x: mx, y: p1.y }];
-    handle = { x: mx, y: (p0.y + p1.y) / 2 };
-  } else {
-    const s = dy >= 0 ? 1 : -1;
-    p0 = { x: src.cx, y: src.cy + (s * src.h) / 2 };
-    p1 = { x: dst.cx, y: dst.cy - (s * dst.h) / 2 };
-    const my = laneAt(p0.y, p1.y, lane) + bend[1];
-    corners = [{ x: p0.x, y: my }, { x: p1.x, y: my }];
-    handle = { x: (p0.x + p1.x) / 2, y: my };
-  }
-  const c0 = corners[0]!;
-  const cN = corners[corners.length - 1]!;
+// An orthogonal connector along a path the router chose. Geometry no longer decides where a
+// connector goes — it only draws it — because a path is only correct relative to every other
+// path in the drawing, which a function given two boxes cannot see. See route.ts.
+export function polylineGeom(points: Point[], handle: Point, radius = 12): EdgeGeom {
+  const p0 = points[0]!;
+  const p1 = points[points.length - 1]!;
   return {
-    path: roundedPath([p0, ...corners, p1], R),
+    path: roundedPath(points, radius),
     handle,
     p0,
     p1,
-    dirStart: unit(p0, c0),
-    dirEnd: unit(cN, p1),
+    dirStart: unit(p0, points[1] ?? p1),
+    dirEnd: unit(points[points.length - 2] ?? p0, p1),
   };
 }
 
