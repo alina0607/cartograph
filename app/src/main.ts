@@ -313,12 +313,17 @@ function saveDoc(): void {
 function mountDoc(doc: CodeboardDoc, origin: string): void {
   if (!doc.seed || !doc.overlay) throw new Error("not a cartograph file");
   store = new Store(doc.seed, doc.scope || "imported");
-  store.setOverlay(doc.overlay); // deliberately no fitToContent: the saved view IS the layout
+  store.setOverlay(doc.overlay);
+  // A saved view is the layout and must be restored untouched. Its ABSENCE is the case that bites:
+  // a board exported before the user ever panned has no view to restore, and without a fit it
+  // opens wherever the auto-layout happened to land — off-screen often enough to read as empty.
+  const fresh = !store.hasSavedView();
   byKey = new Map(doc.seed.nodes.map((n) => [n.key, n]));
   pathInput.value = doc.scope || "";
   updateLegend(doc.seed);
   updateLinesLabel();
   rerender();
+  if (fresh) requestAnimationFrame(fitToContent);
   setStatus(`${doc.seed.nodes.length} classes ${origin}`);
 }
 
