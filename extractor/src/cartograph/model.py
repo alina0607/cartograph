@@ -21,6 +21,7 @@ DEPENDENCY = "dependency"
 IMPORT = "import"
 CONTRACT = "contract"  # cross-language: same concept named in two languages
 CALLS = "calls"  # a function calls another function (module/function graph)
+INSTANCE_OF = "instanceof"  # a class is an instance of its metaclass (Python ``metaclass=``)
 
 # Node kinds.
 CLASS = "class"
@@ -28,6 +29,7 @@ ABSTRACT = "abstract"
 INTERFACE = "interface"
 STRUCT = "struct"
 FUNCTION = "function"  # a standalone (module-level) function, for the call graph
+METACLASS = "metaclass"  # a class whose instances are classes (it derives from ``type``)
 
 
 def node_key(module: str, name: str) -> str:
@@ -51,7 +53,7 @@ class Node:
     key: str
     name: str
     module: str
-    kind: str  # CLASS | ABSTRACT | INTERFACE | STRUCT
+    kind: str  # CLASS | ABSTRACT | INTERFACE | STRUCT | METACLASS
     lang: str = ""  # python | typescript | go — set by the build from the file extension
     doc: str = ""  # the class docstring
     attributes: tuple[tuple[str, str], ...] = ()  # (name, type-as-written)

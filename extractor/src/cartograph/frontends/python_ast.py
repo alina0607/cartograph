@@ -22,7 +22,9 @@ from cartograph.model import (
     DEPENDENCY,
     FUNCTION,
     INHERITS,
+    INSTANCE_OF,
     INTERFACE,
+    METACLASS,
     Method,
     Node,
     Reference,
@@ -52,6 +54,8 @@ _NON_TYPES = frozenset(
 )
 # Bases that only mark abstractness/genericity, not a real parent to draw.
 _MARKER_BASES = frozenset({"object", "ABC", "ABCMeta", "Generic"})
+# Standard-library metaclasses: a class deriving from one of these is itself a metaclass.
+_METACLASS_BASES = frozenset({"type", "ABCMeta", "EnumMeta", "EnumType"})
 
 
 def extract(source: str, module: str) -> tuple[list[Node], list[Reference]]:
@@ -161,6 +165,9 @@ def _relations(
         for b in base_names
         if b not in _MARKER_BASES
     ]
+    meta = _metaclass_name(cls)
+    if meta:
+        refs.append(Reference(key, meta, INSTANCE_OF))
     refs += [Reference(key, n, COMPOSITION) for n in sorted(composes)]
     refs += [Reference(key, n, AGGREGATION) for n in sorted(agg)]
     refs += [Reference(key, n, ASSOCIATION) for n in sorted(assoc)]
@@ -220,10 +227,25 @@ def _is_ctor_name(name: str) -> bool:
     )
 
 
+def _metaclass_name(cls: ast.ClassDef) -> str | None:
+    """The name in ``class X(..., metaclass=M)``, or None when there is none."""
+    for kw in cls.keywords:
+        if kw.arg == "metaclass":
+            return _name_of(kw.value)
+    return None
+
+
 def _kind(cls: ast.ClassDef, base_names: list[str]) -> str:
     if "Protocol" in base_names:
         return INTERFACE
-    if {"ABC", "ABCMeta"} & set(base_names) or _has_abstract_method(cls):
+    # Checked before ABSTRACT: ``class M(ABCMeta)`` is a metaclass, not an abstract class.
+    if _METACLASS_BASES & set(base_names):
+        return METACLASS
+    if (
+        {"ABC", "ABCMeta"} & set(base_names)
+        or _metaclass_name(cls) == "ABCMeta"
+        or _has_abstract_method(cls)
+    ):
         return ABSTRACT
     return CLASS
 

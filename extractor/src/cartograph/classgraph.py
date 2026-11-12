@@ -15,6 +15,7 @@ UML draws an inherited relationship once, at the superclass.
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import replace
 
 from cartograph.model import (
     AGGREGATION,
@@ -27,6 +28,7 @@ from cartograph.model import (
     IMPLEMENTS,
     INHERITS,
     INTERFACE,
+    METACLASS,
     Node,
     Reference,
     Relation,
@@ -214,3 +216,21 @@ def _drop_inherited_has_a(edges: list[Relation]) -> list[Relation]:
 def _pkg_dir(module: str) -> str:
     """The package a class lives in = its file's directory; same dir == same package."""
     return module.rsplit("/", 1)[0] if "/" in module else ""
+
+
+def mark_metaclasses(nodes: list[Node], relations: tuple[Relation, ...]) -> list[Node]:
+    """Return the nodes with every subclass of a metaclass marked as a metaclass too.
+
+    The frontend knows only the standard-library metaclasses by name, so ``class Sub(MyMeta)``
+    arrives as a plain class; once ``inherits`` edges are resolved, ``Sub`` is a metaclass.
+    """
+    kind_of = {n.key: n.kind for n in nodes}
+    changed = True
+    while changed:  # a chain Sub2 -> Sub -> MyMeta needs more than one pass
+        changed = False
+        for r in relations:
+            is_sub = r.kind == INHERITS and kind_of.get(r.dst) == METACLASS
+            if is_sub and kind_of[r.src] != METACLASS:
+                kind_of[r.src] = METACLASS
+                changed = True
+    return [replace(n, kind=kind_of[n.key]) if kind_of[n.key] != n.kind else n for n in nodes]

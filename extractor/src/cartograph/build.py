@@ -55,6 +55,7 @@ def build_seed(root: Path) -> Seed:
 
     nodes.sort(key=lambda n: n.key)
     relations = classgraph.resolve(nodes, refs)
+    nodes = classgraph.mark_metaclasses(nodes, relations)
     return Seed(version=1, nodes=tuple(nodes), relations=relations)
 
 
