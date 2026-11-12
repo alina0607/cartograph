@@ -10,6 +10,7 @@ that resolve to a class in the same scan, so stdlib/builtin types drop out.
 from __future__ import annotations
 
 import ast
+import builtins
 from collections.abc import Callable
 
 from cartograph.model import (
@@ -53,7 +54,8 @@ _NON_TYPES = frozenset(
     }
 )
 # Bases that only mark abstractness/genericity, not a real parent to draw.
-_MARKER_BASES = frozenset({"object", "ABC", "ABCMeta", "Generic"})
+# ``ABCMeta`` is not a marker: only a metaclass derives from it, and that parent is worth drawing.
+_MARKER_BASES = frozenset({"object", "ABC", "Generic", "Protocol"})
 # Standard-library metaclasses: a class deriving from one of these is itself a metaclass.
 _METACLASS_BASES = frozenset({"type", "ABCMeta", "EnumMeta", "EnumType"})
 
@@ -65,8 +67,9 @@ def extract(source: str, module: str) -> tuple[list[Node], list[Reference]]:
         return [], []
     nodes: list[Node] = []
     refs: list[Reference] = []
+    imports = _imports(tree)
     for cls in _iter_classes(tree):
-        node, cls_refs = _class(cls, module, source)
+        node, cls_refs = _class(cls, module, source, imports)
         nodes.append(node)
         refs.extend(cls_refs)
     for fn in tree.body:  # module-level functions (not methods) for the call graph
@@ -101,14 +104,56 @@ def _iter_classes(tree: ast.Module) -> list[ast.ClassDef]:
     return [n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]
 
 
-def _class(cls: ast.ClassDef, module: str, source: str) -> tuple[Node, list[Reference]]:
+def _imports(tree: ast.Module) -> dict[str, str]:
+    """Local name -> what it was imported as: ``from torch import nn`` gives ``nn -> torch.nn``.
+
+    Relative imports (``from .x import Y``) are left out: they name this project's own code.
+    """
+    out: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                if a.asname:
+                    out[a.asname] = a.name
+                else:  # ``import a.b`` binds ``a``
+                    top = a.name.split(".", 1)[0]
+                    out[top] = top
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            for a in node.names:
+                out[a.asname or a.name] = f"{node.module}.{a.name}"
+    return out
+
+
+def _qualname(expr: ast.expr, imports: dict[str, str]) -> str:
+    """The fully qualified name an expression refers to, or "" if it is not imported.
+
+    ``nn.Module`` with ``from torch import nn`` -> ``torch.nn.Module``; a bare builtin class
+    such as ``ValueError`` -> ``builtins.ValueError``.
+    """
+    if isinstance(expr, ast.Name):
+        if expr.id in imports:
+            return imports[expr.id]
+        return f"builtins.{expr.id}" if isinstance(getattr(builtins, expr.id, None), type) else ""
+    if isinstance(expr, ast.Attribute):
+        root = _qualname(expr.value, imports)
+        return f"{root}.{expr.attr}" if root else ""
+    if isinstance(expr, ast.Subscript):
+        return _qualname(expr.value, imports)
+    if isinstance(expr, ast.Call):
+        return _qualname(expr.func, imports)
+    return ""
+
+
+def _class(
+    cls: ast.ClassDef, module: str, source: str, imports: dict[str, str]
+) -> tuple[Node, list[Reference]]:
     key = node_key(module, cls.name)
     base_names = [n for n in (_name_of(b) for b in cls.bases) if n]
     kind = _kind(cls, base_names)
 
     methods = _methods(cls, source)
     attributes = _attributes(cls)
-    refs = _relations(key, cls, base_names, attributes)
+    refs = _relations(key, cls, base_names, attributes, imports)
 
     node = Node(
         key=key,
@@ -142,6 +187,7 @@ def _relations(
     cls: ast.ClassDef,
     base_names: list[str],
     attributes: tuple[tuple[str, str], ...],
+    imports: dict[str, str],
 ) -> list[Reference]:
     """The six UML relation kinds this class originates, before name resolution.
 
@@ -155,34 +201,42 @@ def _relations(
         for type_name, in_container in _types_in(type_str):
             (agg if in_container else assoc).add(type_name)
 
-    composes, constructs = _constructions(cls)
+    composes, constructs, composed_as = _constructions(cls, imports)
     agg -= composes
     assoc -= composes | agg
     constructs -= composes | agg | assoc
 
     refs: list[Reference] = [
-        Reference(src=key, dst_name=b, kind=INHERITS)
-        for b in base_names
-        if b not in _MARKER_BASES
+        Reference(src=key, dst_name=name, kind=INHERITS, qualname=_qualname(expr, imports))
+        for expr in cls.bases
+        if (name := _name_of(expr)) and name not in _MARKER_BASES
     ]
-    meta = _metaclass_name(cls)
-    if meta:
-        refs.append(Reference(key, meta, INSTANCE_OF))
-    refs += [Reference(key, n, COMPOSITION) for n in sorted(composes)]
+    meta = _metaclass_keyword(cls)
+    meta_name = _name_of(meta) if meta is not None else None
+    # ``metaclass=ABCMeta`` already shows as the abstract colour; an edge would only repeat it.
+    if meta is not None and meta_name and meta_name != "ABCMeta":
+        refs.append(Reference(key, meta_name, INSTANCE_OF, qualname=_qualname(meta, imports)))
+    refs += [
+        Reference(key, n, COMPOSITION, qualname=composed_as.get(n, "")) for n in sorted(composes)
+    ]
     refs += [Reference(key, n, AGGREGATION) for n in sorted(agg)]
     refs += [Reference(key, n, ASSOCIATION) for n in sorted(assoc)]
     refs += [Reference(key, n, DEPENDENCY) for n in sorted(constructs)]
     return refs
 
 
-def _constructions(cls: ast.ClassDef) -> tuple[set[str], set[str]]:
-    """(composes, constructs): class-like types instantiated in the class's methods.
+def _constructions(
+    cls: ast.ClassDef, imports: dict[str, str]
+) -> tuple[set[str], set[str], dict[str, str]]:
+    """(composes, constructs, composed_as): class-like types instantiated in the class's methods.
 
     ``composes`` = a construction stored on ``self`` (owned). ``constructs`` = every
     construction, stored or not; the transient ones become dependency candidates.
+    ``composed_as`` maps each owned name to its imported qualified name, when it has one.
     """
     composes: set[str] = set()
     constructs: set[str] = set()
+    composed_as: dict[str, str] = {}
     for method in cls.body:
         if not isinstance(method, ast.FunctionDef | ast.AsyncFunctionDef):
             continue
@@ -195,7 +249,10 @@ def _constructions(cls: ast.ClassDef) -> tuple[set[str], set[str]]:
                 stored = _stored_construction(sub)
                 if stored:
                     composes.add(stored)
-    return composes, constructs
+                    q = _qualname(sub.value, imports) if sub.value is not None else ""
+                    if q:
+                        composed_as[stored] = q
+    return composes, constructs, composed_as
 
 
 def _stored_construction(node: ast.Assign | ast.AnnAssign) -> str | None:
@@ -227,11 +284,11 @@ def _is_ctor_name(name: str) -> bool:
     )
 
 
-def _metaclass_name(cls: ast.ClassDef) -> str | None:
-    """The name in ``class X(..., metaclass=M)``, or None when there is none."""
+def _metaclass_keyword(cls: ast.ClassDef) -> ast.expr | None:
+    """The ``M`` expression in ``class X(..., metaclass=M)``, or None when there is none."""
     for kw in cls.keywords:
         if kw.arg == "metaclass":
-            return _name_of(kw.value)
+            return kw.value
     return None
 
 
@@ -241,9 +298,10 @@ def _kind(cls: ast.ClassDef, base_names: list[str]) -> str:
     # Checked before ABSTRACT: ``class M(ABCMeta)`` is a metaclass, not an abstract class.
     if _METACLASS_BASES & set(base_names):
         return METACLASS
+    meta = _metaclass_keyword(cls)
     if (
         {"ABC", "ABCMeta"} & set(base_names)
-        or _metaclass_name(cls) == "ABCMeta"
+        or (meta is not None and _name_of(meta) == "ABCMeta")
         or _has_abstract_method(cls)
     ):
         return ABSTRACT

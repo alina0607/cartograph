@@ -14,6 +14,7 @@ UML draws an inherited relationship once, at the superclass.
 
 from __future__ import annotations
 
+import sys
 from collections import defaultdict
 from dataclasses import replace
 
@@ -27,18 +28,28 @@ from cartograph.model import (
     FUNCTION,
     IMPLEMENTS,
     INHERITS,
+    INSTANCE_OF,
     INTERFACE,
+    LIBRARY,
     METACLASS,
+    STDLIB,
     Node,
     Reference,
     Relation,
+    node_key,
 )
 
 _HAS_A = (COMPOSITION, AGGREGATION, ASSOCIATION)
 _TREE = (INHERITS, IMPLEMENTS)
+# Relations that may point outside the scan (to a stdlib or third-party class).
+_EXTERNAL_OK = (INHERITS, INSTANCE_OF, COMPOSITION)
 
 
-def resolve(nodes: list[Node], refs: list[Reference]) -> tuple[Relation, ...]:
+def resolve(
+    nodes: list[Node], refs: list[Reference], local_packages: frozenset[str] = frozenset()
+) -> tuple[Relation, ...]:
+    """Resolve references to relations. ``local_packages`` are extra top-level package names
+    that are this project's own (the scanned folder's name, when it is itself a package)."""
     by_name: dict[str, list[str]] = defaultdict(list)
     for n in nodes:
         by_name[n.name].append(n.key)
@@ -52,6 +63,8 @@ def resolve(nodes: list[Node], refs: list[Reference]) -> tuple[Relation, ...]:
     calls_refs: list[Reference] = []
     seen: set[tuple[str, str, str, bool]] = set()
 
+    local_tops = {_top_package(m) for m in module_of.values()} | local_packages
+
     for ref in refs:
         if ref.kind == DEPENDENCY:
             dep_refs.append(ref)
@@ -59,7 +72,14 @@ def resolve(nodes: list[Node], refs: list[Reference]) -> tuple[Relation, ...]:
         if ref.kind == CALLS:
             calls_refs.append(ref)
             continue
-        dst = _resolve_one(ref, by_name, module_of, lang_of, kind_of)
+        # An explicit import from outside the project (``from collections import Counter``)
+        # names that class, even when the scan also has a class of the same name elsewhere.
+        # A bare builtin name only counts when nothing in the scan matches.
+        dst = None if ref.qualname.startswith("builtins.") else _external_key(ref, local_tops)
+        if dst is None:
+            dst = _resolve_one(ref, by_name, module_of, lang_of, kind_of)
+        if dst is None:
+            dst = _external_key(ref, local_tops)
         if dst is None or dst == ref.src:
             continue
         kind = IMPLEMENTS if ref.kind == INHERITS and kind_of.get(dst) == INTERFACE else ref.kind
@@ -234,3 +254,39 @@ def mark_metaclasses(nodes: list[Node], relations: tuple[Relation, ...]) -> list
                 kind_of[r.src] = METACLASS
                 changed = True
     return [replace(n, kind=kind_of[n.key]) if kind_of[n.key] != n.kind else n for n in nodes]
+
+
+def _top_package(module: str) -> str:
+    """``recsys/models/sasrec.py`` -> ``recsys``; ``plugins.py`` -> ``plugins``."""
+    return module.split("/", 1)[0].removesuffix(".py")
+
+
+def _external_key(ref: Reference, local_tops: set[str]) -> str | None:
+    """The node key of the outside class a reference names, or None if it is not one.
+
+    Only imported names count, and not ones from this project's own top-level packages:
+    an unresolved ``from recsys.x import Y`` is a scan gap, not a library class.
+    """
+    if ref.kind not in _EXTERNAL_OK or "." not in ref.qualname:
+        return None
+    if ref.qualname.split(".", 1)[0] in local_tops:
+        return None
+    module, name = ref.qualname.rsplit(".", 1)
+    return node_key(module, name)
+
+
+def external_nodes(nodes: list[Node], relations: tuple[Relation, ...]) -> list[Node]:
+    """A node for every relation target outside the scan, coloured by where it comes from."""
+    known = {n.key for n in nodes}
+    lang_of = {n.key: n.lang for n in nodes}
+    out: dict[str, Node] = {}
+    for r in relations:
+        if r.dst in known or r.dst in out:
+            continue
+        module, name = r.dst.split("#", 1)
+        top = module.split(".", 1)[0]
+        kind = STDLIB if top == "builtins" or top in sys.stdlib_module_names else LIBRARY
+        lang = lang_of.get(r.src, "")
+        out[r.dst] = Node(key=r.dst, name=name, module=module, kind=kind, lang=lang)
+    return [out[k] for k in sorted(out)]
+

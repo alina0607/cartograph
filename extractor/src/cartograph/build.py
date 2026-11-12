@@ -54,8 +54,12 @@ def build_seed(root: Path) -> Seed:
         refs.extend(file_refs)
 
     nodes.sort(key=lambda n: n.key)
-    relations = classgraph.resolve(nodes, refs)
+    # Scanning a package folder itself (``recsys/``) leaves its own imports (``recsys.x``)
+    # unresolved; its name marks them as this project's code, not a library.
+    own = frozenset({base.name if root.is_file() else root.name})
+    relations = classgraph.resolve(nodes, refs, own)
     nodes = classgraph.mark_metaclasses(nodes, relations)
+    nodes += classgraph.external_nodes(nodes, relations)
     return Seed(version=1, nodes=tuple(nodes), relations=relations)
 
 

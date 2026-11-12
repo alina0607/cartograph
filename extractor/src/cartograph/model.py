@@ -30,6 +30,9 @@ INTERFACE = "interface"
 STRUCT = "struct"
 FUNCTION = "function"  # a standalone (module-level) function, for the call graph
 METACLASS = "metaclass"  # a class whose instances are classes (it derives from ``type``)
+# Classes outside the scan, drawn only where a scanned class inherits from or owns one.
+STDLIB = "stdlib"  # from the Python standard library (``collections.Counter``, ``abc.ABCMeta``)
+LIBRARY = "library"  # from an installed third-party package (``torch.nn.Module``)
 
 
 def node_key(module: str, name: str) -> str:
@@ -53,7 +56,7 @@ class Node:
     key: str
     name: str
     module: str
-    kind: str  # CLASS | ABSTRACT | INTERFACE | STRUCT | METACLASS
+    kind: str  # CLASS | ABSTRACT | INTERFACE | STRUCT | METACLASS | STDLIB | LIBRARY
     lang: str = ""  # python | typescript | go — set by the build from the file extension
     doc: str = ""  # the class docstring
     attributes: tuple[tuple[str, str], ...] = ()  # (name, type-as-written)
@@ -68,6 +71,9 @@ class Reference:
     dst_name: str  # referenced simple name, resolved later against the whole scan
     kind: str
     lazy: bool = False
+    # Fully qualified target as the file imports it (``torch.nn.Module``), or "" when the name
+    # was not imported. Used only when ``dst_name`` matches no class in the scan.
+    qualname: str = ""
 
 
 @dataclass(frozen=True, slots=True)

@@ -20,6 +20,9 @@ def test_metaclass_kinds() -> None:
         "Echo": "class",
         "Strict": "class",
         "Shape": "abstract",  # metaclass=ABCMeta
+        # outside the scan, drawn because a scanned class inherits from them
+        "ABCMeta": "stdlib",
+        "type": "stdlib",
     }
 
 
@@ -31,4 +34,7 @@ def test_metaclass_relations() -> None:
         (m + "Strict", m + "StrictMeta", "instanceof"),
         (m + "StrictMeta", m + "PluginMeta", "inherits"),
         (m + "Echo", m + "Plugin", "inherits"),
+        (m + "PluginMeta", "abc#ABCMeta", "inherits"),
+        (m + "Counter", "builtins#type", "inherits"),
+        # metaclass=ABCMeta (Shape) draws no edge: the abstract colour already says it
     }
