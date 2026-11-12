@@ -25,7 +25,8 @@ function upperLower(kind: string, s: number, d: number): [number, number] | null
   switch (kind) {
     case "inherits":
     case "implements":
-      return [d, s]; // the base type sits above its subtype
+    case "instanceof":
+      return [d, s]; // the base type (or metaclass) sits above its subtype (or instance)
     case "composition":
     case "aggregation":
     case "association":

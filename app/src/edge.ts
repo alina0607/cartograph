@@ -20,6 +20,7 @@ const PURPLE = "#7c5cf0";
 const GOLD = "#d98324";
 const GREEN = "#0f9d8f";
 const SLATE = "#6b7280";
+const RUST = "#c2410c";
 
 // Marker ids resolve to <marker> defs in render.ts. Colours are baked into each marker
 // (no SVG2 context-stroke, which some engines drop — leaving hollow markers invisible).
@@ -43,6 +44,9 @@ export function edgeStyle(rel: SeedRelation): EdgeStyle {
         markerStart: null,
         markerEnd: "m-arrow-slate",
       };
+    case "instanceof":
+      // A class is an instance of its metaclass: UML draws a dashed dependency «instanceOf».
+      return { color: RUST, dash: "6 4", markerStart: null, markerEnd: "m-arrow-rust" };
     case "contract":
       return { color: "#db2777", dash: "3 4", markerStart: null, markerEnd: null };
     case "calls":

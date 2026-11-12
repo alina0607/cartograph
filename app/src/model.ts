@@ -10,7 +10,7 @@ export interface SeedNode {
   key: string;
   name: string;
   module: string;
-  kind: string; // class | abstract | interface | struct
+  kind: string; // class | abstract | interface | struct | metaclass
   lang: string; // python | typescript | go
   doc: string; // the class docstring
   attributes: [string, string][]; // [name, type]
@@ -20,7 +20,7 @@ export interface SeedNode {
 export interface SeedRelation {
   src: string;
   dst: string;
-  kind: string; // inherits | implements | composition | aggregation | association | dependency | import
+  kind: string; // inherits | implements | composition | aggregation | association | dependency | import | instanceof
   lazy: boolean;
 }
 

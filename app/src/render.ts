@@ -31,6 +31,8 @@ const BOX_KINDS: Record<string, BoxKind> = {
   abstract: { fill: "#cbc987", stroke: "#aeab63", ink: "#33320c", ink2: "#4b4820" },
   interface: { fill: "#a0cdc5", stroke: "#77b2a8", ink: "#14352f", ink2: "#274d45" },
   struct: { fill: "#aabfe0", stroke: "#7f9fca", ink: "#16304f", ink2: "#2b476b" },
+  // Metaclasses make classes, so they get their own warm colour, matching the instanceof edge.
+  metaclass: { fill: "#f2b48f", stroke: "#d98c5f", ink: "#3b1d0a", ink2: "#5a2f14" },
   // Functions are neutral grey so they read as a different layer from the coloured types.
   function: { fill: "#aeb3bd", stroke: "#8b909c", ink: "#232630", ink2: "#3a3d47" },
 };

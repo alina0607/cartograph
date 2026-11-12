@@ -14,7 +14,7 @@ export interface MethodLine {
 }
 
 export interface BoxContent {
-  stereotype: string; // «interface» / «struct» / "" — shown above the name
+  stereotype: string; // «interface» / «struct» / «metaclass» / "" — shown above the name
   title: string;
   attrs: string[]; // formatted "+ name: type"
   methods: MethodLine[];
@@ -36,11 +36,17 @@ function vis(name: string): string {
   return "+";
 }
 
+// UML stereotypes shown above a class name, by node kind.
+const STEREOTYPES: Record<string, string> = {
+  interface: "«interface»",
+  struct: "«struct»",
+  metaclass: "«metaclass»",
+};
+
 export function content(node: SeedNode): BoxContent {
   const attrs = node.attributes.map(([n, t]) => (t ? `${vis(n)} ${n}: ${t}` : `${vis(n)} ${n}`));
   const methods = node.methods.map((m) => ({ name: m.name, label: `${vis(m.name)} ${m.name}()` }));
-  const stereotype =
-    node.kind === "interface" ? "«interface»" : node.kind === "struct" ? "«struct»" : "";
+  const stereotype = STEREOTYPES[node.kind] ?? "";
   return {
     stereotype,
     title: node.name,

@@ -90,10 +90,12 @@ const LEGEND: Record<string, { glyph: string; color: string; label: string }> = 
   import: { glyph: "⇢", color: "#8894c4", label: "import" },
   contract: { glyph: "⇠⇢", color: "#db2777", label: "cross-language" },
   calls: { glyph: "→", color: "#2e78c9", label: "calls (function)" },
+  instanceof: { glyph: "⇢", color: "#c2410c", label: "instance of — metaclass" },
 };
 const LEGEND_ORDER = [
   "inherits",
   "implements",
+  "instanceof",
   "composition",
   "aggregation",
   "association",
