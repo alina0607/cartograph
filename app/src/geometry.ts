@@ -46,7 +46,9 @@ const STEREOTYPES: Record<string, string> = {
 export function content(node: SeedNode): BoxContent {
   const attrs = node.attributes.map(([n, t]) => (t ? `${vis(n)} ${n}: ${t}` : `${vis(n)} ${n}`));
   const methods = node.methods.map((m) => ({ name: m.name, label: `${vis(m.name)} ${m.name}()` }));
-  const stereotype = STEREOTYPES[node.kind] ?? "";
+  // A class from outside the scan names its package instead: «torch.nn», «collections».
+  const outside = node.kind === "stdlib" || node.kind === "library";
+  const stereotype = outside ? `«${node.module}»` : (STEREOTYPES[node.kind] ?? "");
   return {
     stereotype,
     title: node.name,

@@ -23,6 +23,7 @@ interface BoxKind {
   stroke: string;
   ink: string; // title text
   ink2: string; // member / stereotype text
+  dash?: string; // outline dash pattern; classes from outside the scan are dashed
 }
 // Each UML kind gets its own colour so classes, abstracts, interfaces and structs are
 // distinguishable at a glance (and tell apart from the rose doc-notes and yellow notes).
@@ -33,6 +34,10 @@ const BOX_KINDS: Record<string, BoxKind> = {
   struct: { fill: "#aabfe0", stroke: "#7f9fca", ink: "#16304f", ink2: "#2b476b" },
   // Metaclasses make classes, so they get their own warm colour, matching the instanceof edge.
   metaclass: { fill: "#f2b48f", stroke: "#d98c5f", ink: "#3b1d0a", ink2: "#5a2f14" },
+  // Classes outside the scan (drawn where a scanned class inherits from or owns one): pale and
+  // dashed so they read as context, grey for the standard library, green for installed packages.
+  stdlib: { fill: "#e3e7ec", stroke: "#8b95a1", ink: "#1f2a36", ink2: "#4a5562", dash: "5 3" },
+  library: { fill: "#c3ead2", stroke: "#4f9c6e", ink: "#123a24", ink2: "#2c5a40", dash: "5 3" },
   // Functions are neutral grey so they read as a different layer from the coloured types.
   function: { fill: "#aeb3bd", stroke: "#8b909c", ink: "#232630", ink2: "#3a3d47" },
 };
@@ -40,6 +45,12 @@ const BOX_KINDS: Record<string, BoxKind> = {
 // Language is a second visual channel (box colour already encodes the UML kind): a coloured
 // left stripe on every box plus a short tag, so Python / TypeScript / Go tell apart at a
 // glance and mixed-language scans are readable.
+// Legend rows for the outside-the-scan box colours (matching BOX_KINDS above).
+export const ORIGIN_STYLE: Record<string, { color: string; label: string }> = {
+  stdlib: { color: "#8b95a1", label: "standard library class" },
+  library: { color: "#4f9c6e", label: "third-party library class" },
+};
+
 export const LANG_STYLE: Record<string, { tag: string; color: string; label: string }> = {
   python: { tag: "py", color: "#2b6cb0", label: "Python" },
   typescript: { tag: "ts", color: "#d97706", label: "TypeScript" },
@@ -142,6 +153,7 @@ function renderBox(node: SeedNode, box: Box, collapsed: boolean): string {
   const parts: string[] = [
     `<rect x="${round(x0)}" y="${round(y0)}" width="${d.w}" height="${round(d.h)}" rx="12" ` +
       `fill="${kind.fill}" stroke="${kind.stroke}" stroke-width="1.2" ` +
+      (kind.dash ? `stroke-dasharray="${kind.dash}" ` : "") +
       `filter="url(#cardshadow)"/>`,
     langStripe(x0, y0, d.h, lang),
     langBadge(x0 + d.w, y0, lang),

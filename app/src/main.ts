@@ -1,7 +1,7 @@
 import "@fontsource-variable/inter";
 import type { CodeboardDoc, Seed, SeedNode } from "./model";
 import { Store } from "./store";
-import { LANG_STYLE, renderScene } from "./render";
+import { LANG_STYLE, ORIGIN_STYLE, renderScene } from "./render";
 import { wireInteractions } from "./interactions";
 import { openMethodModal } from "./ui/modal";
 
@@ -68,8 +68,10 @@ function fitToContent(): void {
 
 function nodeCounts(seed: Seed): string {
   const fns = seed.nodes.filter((n) => n.kind === "function").length;
-  const cls = seed.nodes.length - fns;
+  const ext = seed.nodes.filter((n) => n.kind === "stdlib" || n.kind === "library").length;
+  const cls = seed.nodes.length - fns - ext;
   const parts = [`${cls} class${cls === 1 ? "" : "es"}`];
+  if (ext) parts.push(`${ext} outside`);
   if (fns) parts.push(`${fns} function${fns === 1 ? "" : "s"}`);
   parts.push(`${seed.relations.length} relation${seed.relations.length === 1 ? "" : "s"}`);
   return parts.join(" · ");
@@ -123,9 +125,15 @@ function updateLegend(seed: Seed): void {
       return `<div class="lg-row"><span class="lg-sw" style="color:${e.color}">■</span>${e.label}</div>`;
     })
     .join("");
-  const sep = rows && langRows ? `<div class="lg-sep"></div>` : "";
-  legendEl.innerHTML = rows + sep + langRows;
-  legendEl.classList.toggle("on", (rows + langRows).length > 0);
+  // Where outside-the-scan classes come from (standard library vs installed package).
+  const kinds = new Set(seed.nodes.map((n) => n.kind));
+  const originRows = Object.entries(ORIGIN_STYLE)
+    .filter(([k]) => kinds.has(k))
+    .map(([, e]) => `<div class="lg-row"><span class="lg-sw" style="color:${e.color}">■</span>${e.label}</div>`)
+    .join("");
+  const sections = [rows, originRows, langRows].filter(Boolean);
+  legendEl.innerHTML = sections.join(`<div class="lg-sep"></div>`);
+  legendEl.classList.toggle("on", sections.length > 0);
 }
 
 async function boot(): Promise<void> {

@@ -3,8 +3,8 @@ import { edgeStyle } from "./edge";
 import { content } from "./geometry";
 import type { SeedNode } from "./model";
 
-function node(kind: string): SeedNode {
-  return { key: "m.py#X", name: "X", module: "m.py", kind, lang: "python", doc: "", attributes: [], methods: [] };
+function node(kind: string, module = "m.py"): SeedNode {
+  return { key: `${module}#X`, name: "X", module, kind, lang: "python", doc: "", attributes: [], methods: [] };
 }
 
 describe("metaclass", () => {
@@ -25,5 +25,12 @@ describe("metaclass", () => {
     expect(s.dash).toBe("6 4");
     expect(s.markerEnd).toBe("m-arrow-rust");
     expect(s.markerStart).toBeNull();
+  });
+});
+
+describe("classes outside the scan", () => {
+  it("name their package as the stereotype", () => {
+    expect(content(node("library", "torch.nn")).stereotype).toBe("«torch.nn»");
+    expect(content(node("stdlib", "collections")).stereotype).toBe("«collections»");
   });
 });
