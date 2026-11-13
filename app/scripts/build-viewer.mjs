@@ -11,13 +11,19 @@
 //
 // No dependencies: the whole job is three substitutions over the built index.html.
 
-import { readFile, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { readdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const APP = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = join(APP, "dist");
 const OUT = join(APP, "public", "viewer.html");
+// The Python extractor ships a copy so `cartograph-extract --html` works without Node. The hash
+// of the app sources it was built from sits next to it; the extractor's tests recompute it and
+// fail when the app changed but this copy was not rebuilt.
+const PKG = resolve(APP, "..", "extractor", "src", "cartograph");
+const SOURCE_FILES = ["index.html", "package-lock.json", "vite.config.ts", "scripts/build-viewer.mjs"];
 
 const MIME = {
   ".woff2": "font/woff2",
@@ -91,7 +97,30 @@ viewer = viewer.replace(
   "<!-- Built by scripts/build-viewer.mjs from this app's own bundle. Do not edit by hand. -->\n    <title>",
 );
 
+/** sha256 over app/src/** and SOURCE_FILES: path, NUL, bytes, NUL — in sorted path order. */
+async function sourcesHash() {
+  const files = [...SOURCE_FILES];
+  const stack = [join(APP, "src")];
+  while (stack.length) {
+    const dir = stack.pop();
+    for (const e of await readdir(dir, { withFileTypes: true })) {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) stack.push(p);
+      else files.push(relative(APP, p).split("\\").join("/"));
+    }
+  }
+  const hash = createHash("sha256");
+  for (const rel of files.sort()) {
+    hash.update(rel + "\0");
+    hash.update(await readFile(join(APP, rel)));
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+}
+
 await writeFile(OUT, viewer, "utf8");
+await writeFile(join(PKG, "viewer.html"), viewer, "utf8");
+await writeFile(join(PKG, "viewer.sources.sha256"), (await sourcesHash()) + "\n", "utf8");
 const kb = (s) => `${Math.round(s / 1024)} KB`;
 console.log(
   `wrote public/viewer.html — ${kb(viewer.length)} ` +

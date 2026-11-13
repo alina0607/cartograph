@@ -65,6 +65,26 @@ cd ../app && npm run dev
 Inside the app you can also pick a folder with the **browse…** button, or paste a path
 and hit **scan**.
 
+### Use it from another project
+
+The extractor is a Python package, so a project can depend on it straight from git and
+keep its diagram up to date in a pre-commit hook or CI, with no Node involved:
+
+```bash
+uv add --dev "cartograph @ git+https://github.com/alina0607/cartograph#subdirectory=extractor"
+
+# Seed plus a self-contained board you can open in any browser
+uv run cartograph-extract . --exclude tests --exclude notes \
+    -o docs/classes.seed.json --html docs/classes.html
+```
+
+`--exclude` is repeatable. A pattern without `/` matches any path component (`tests`,
+`*_test.py`); a pattern with `/` matches from the scanned root (`app/tests`).
+
+`--html` pours the seed into `extractor/src/cartograph/viewer.html`, the app's own
+single-file build (the page the **export html** button fills). After changing the app,
+rebuild that copy with `npm run build:viewer`; a test fails until you do.
+
 ## Roadmap
 
 - [x] Python frontend, six UML relationships, interactive canvas, study-notes layer
