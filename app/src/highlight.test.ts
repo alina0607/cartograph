@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { highlightCode } from "./highlight";
+import { highlightCode, withoutDocstring } from "./highlight";
 
 // The spans a piece of source gets, as [kind, text] pairs (plain text left out).
 function spans(html: string): [string, string][] {
@@ -112,5 +112,38 @@ describe("highlightCode: TypeScript and Go", () => {
       ["num", "1"],
       ["com", "// n"],
     ]);
+  });
+});
+
+describe("withoutDocstring", () => {
+  it("drops the docstring's lines and one blank line after it", () => {
+    const src = [
+      "@cache",
+      "def fit(self):",
+      '    """Train.',
+      "",
+      "    Args:",
+      '        x: y."""',
+      "",
+      "    return 1",
+    ].join("\n");
+    expect(withoutDocstring(src, "python")).toBe("@cache\ndef fit(self):\n    return 1");
+  });
+
+  it("keeps a source whose only body is the docstring readable", () => {
+    expect(withoutDocstring('def f():\n    """Only a doc."""', "python")).toBe("def f():");
+  });
+
+  it("leaves a docstring that shares its line with code, and other languages, alone", () => {
+    const oneLine = 'def f(): """Doc."""';
+    expect(withoutDocstring(oneLine, "python")).toBe(oneLine);
+    expect(withoutDocstring("run() {\n  return 1;\n}", "typescript")).toBe(
+      "run() {\n  return 1;\n}",
+    );
+  });
+
+  it("does not touch a later string that is not the docstring", () => {
+    const src = 'def f():\n    x = 1\n    """not a doc"""';
+    expect(withoutDocstring(src, "python")).toBe(src);
   });
 });

@@ -69,6 +69,31 @@ const IDENT = /^[A-Za-z_][A-Za-z0-9_]*/;
 const NUMBER =
   /^(?:0[xX][0-9a-fA-F_]+|0[oO][0-7_]+|0[bB][01_]+|(?:\d[\d_]*\.?[\d_]*|\.\d[\d_]*)(?:[eE][+-]?\d+)?[jJn]?)/;
 
+/**
+ * The source without its docstring, for when the popup already shows the docstring above it.
+ * The docstring's own lines go, and so does one blank line after it. Only Python keeps the
+ * docstring inside the method; TypeScript and Go put it in a comment before, outside the source.
+ */
+export function withoutDocstring(source: string, lang: string): string {
+  if (lang !== "python") return source;
+  let at = 0;
+  for (const t of lexPython(source)) {
+    if (t.kind === "doc") {
+      const start = source.lastIndexOf("\n", at - 1) + 1; // the docstring's line
+      let end = at + t.text.length;
+      if (source.slice(start, at).trim()) return source; // code before it on the line: keep it
+      const eol = source.indexOf("\n", end);
+      if (source.slice(end, eol < 0 ? undefined : eol).trim()) return source; // code after it
+      end = eol < 0 ? source.length : eol + 1;
+      const next = source.indexOf("\n", end);
+      if (next >= 0 && !source.slice(end, next).trim()) end = next + 1; // one blank line after
+      return (source.slice(0, start) + source.slice(end)).replace(/\n+$/, "");
+    }
+    at += t.text.length;
+  }
+  return source;
+}
+
 /** `name` is the method being shown: its declaration is coloured like the editor's. */
 export function highlightCode(source: string, lang: string, name = ""): string {
   const tokens = lang === "python" ? lexPython(source) : lexCLike(source, lang, name);
@@ -204,8 +229,7 @@ function lexCLike(src: string, lang: string, name: string): Token[] {
     const c = src[i]!;
     let m: RegExpExecArray | null;
     if ((m = /^\/\/[^\n]*/.exec(rest))) out.push({ text: m[0], kind: "com" });
-    else if ((m = /^\/\*[\s\S]*?(?:\*\/|$)/.exec(rest)))
-      out.push({ text: m[0], kind: "com" });
+    else if ((m = /^\/\*[\s\S]*?(?:\*\/|$)/.exec(rest))) out.push({ text: m[0], kind: "com" });
     else if (c === '"' || c === "'" || c === "`") {
       let j = 1;
       while (j < rest.length && rest[j] !== c) {

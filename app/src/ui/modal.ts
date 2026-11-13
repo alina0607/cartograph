@@ -2,7 +2,7 @@
 // Plain DOM (not SVG) so text selection and scrolling are the browser's job.
 
 import { renderDocstring } from "../docfmt";
-import { highlightCode } from "../highlight";
+import { highlightCode, withoutDocstring } from "../highlight";
 import type { SeedMethod, SeedNode } from "../model";
 
 export function openMethodModal(node: SeedNode, method: SeedMethod): void {
@@ -25,7 +25,12 @@ export function openMethodModal(node: SeedNode, method: SeedMethod): void {
       }
       <pre class="cb-src"><code>${
         method.source
-          ? highlightCode(method.source, node.lang, method.name)
+          ? // the docstring is already shown above, so the code leaves it out
+            highlightCode(
+              method.doc ? withoutDocstring(method.source, node.lang) : method.source,
+              node.lang,
+              method.name,
+            )
           : `<span class="hl-com">${esc("# source unavailable")}</span>`
       }</code></pre>
     </div>`;
