@@ -1,10 +1,12 @@
 import "@fontsource-variable/inter";
-import type { CodeboardDoc, Seed, SeedNode } from "./model";
+import { isOutside, type CodeboardDoc, type Seed, type SeedNode } from "./model";
 import { MONO_FONT, setTextMeasurer } from "./geometry";
 import { Store } from "./store";
 import { LANG_STYLE, ORIGIN_STYLE, renderScene } from "./render";
 import { wireInteractions } from "./interactions";
 import { openMethodModal } from "./ui/modal";
+import { wireDocTips } from "./ui/doctip";
+import { escapeHtml } from "./docfmt";
 
 // Size boxes to the text as this browser draws it: the monospace font differs between
 // machines, and an estimate leaves long lines spilling past their box.
@@ -90,7 +92,7 @@ function fitToContent(minZoom = 0.12): void {
 
 function nodeCounts(seed: Seed): string {
   const fns = seed.nodes.filter((n) => n.kind === "function").length;
-  const ext = seed.nodes.filter((n) => ["stdlib", "library", "ml"].includes(n.kind)).length;
+  const ext = seed.nodes.filter((n) => isOutside(n.kind)).length;
   const cls = seed.nodes.length - fns - ext;
   const parts = [`${cls} class${cls === 1 ? "" : "es"}`];
   if (ext) parts.push(`${ext} outside`);
@@ -200,6 +202,21 @@ async function boot(): Promise<void> {
     if (node && method) openMethodModal(node, method);
   });
 
+  wireDocTips(app, (nodeKey, methodName) => {
+    const node = byKey.get(nodeKey);
+    if (!node) return null;
+    if (methodName === null) {
+      if (isOutside(node.kind) && !node.doc) return null; // a library class: nothing to say
+      return { title: `<b>${escapeHtml(node.name)}</b>`, doc: node.doc };
+    }
+    const method = node.methods.find((m) => m.name === methodName);
+    if (!method) return null;
+    return {
+      title: `<span class="dt-owner">${escapeHtml(node.name)}</span>.<b>${escapeHtml(method.name)}</b>()`,
+      doc: method.doc,
+    };
+  });
+
   document.getElementById("reset")!.addEventListener("click", () => {
     if (store) {
       store.reset();
@@ -224,12 +241,6 @@ async function boot(): Promise<void> {
     const c = viewCenterWorld();
     store.addGroup(c.x - 160, c.y - 120);
     rerender();
-  });
-  document.getElementById("docs")!.addEventListener("click", () => {
-    if (store) {
-      store.toggleDocs();
-      rerender();
-    }
   });
   document.getElementById("lines")!.addEventListener("click", () => {
     if (store) {

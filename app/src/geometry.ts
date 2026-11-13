@@ -1,6 +1,6 @@
 // Pure geometry: box sizing/formatting and the edge curve. No DOM, so it is unit-tested.
 
-import type { Point, SeedNode } from "./model";
+import { isOutside, type Point, type SeedNode } from "./model";
 
 // Font sizes (px) of the text in a box. render.ts draws with these; dims() sizes the box to them.
 export const FONT = { body: 14, title: 15, stereotype: 12, hint: 13, fn: 14 } as const;
@@ -64,7 +64,7 @@ export function content(node: SeedNode): BoxContent {
   const attrs = node.attributes.map(([n, t]) => (t ? `${vis(n)} ${n}: ${t}` : `${vis(n)} ${n}`));
   const methods = node.methods.map((m) => ({ name: m.name, label: `${vis(m.name)} ${m.name}()` }));
   // A class from outside the scan names its package instead: «torch.nn», «collections».
-  const outside = node.kind === "stdlib" || node.kind === "library" || node.kind === "ml";
+  const outside = isOutside(node.kind);
   const stereotype = outside ? `«${node.module}»` : (STEREOTYPES[node.kind] ?? "");
   return {
     stereotype,

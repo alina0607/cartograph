@@ -21,8 +21,9 @@ can reopen and keep as study notes.
   referenced); transient constructions become dependency edges.
 - **Direct manipulation.** Draggable classes, editable connector curvature, collapse /
   expand, pan and zoom — all persisted per project.
-- **Annotations from the source.** Each class's docstring is drawn as a linked note;
-  each method's docstring and source open in a detail popup.
+- **Annotations from the source.** Rest the pointer on a method or a class name and its
+  docstring appears beside the box, formatted (Google and NumPy sections, `code`,
+  lists, examples). Click a method to read its source, coloured like PyCharm.
 - **A study surface.** Sticky notes, embedded images, dashed groups (a group carries
   its contents when moved), and JSON save / load.
 - **No cycle warnings.** Draw the dependencies and a cycle is plain to the eye — the

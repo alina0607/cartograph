@@ -139,22 +139,6 @@ export class Store {
     this.scheduleSave();
   }
 
-  // Auto class-docstring notes: a global on/off, plus a per-class position override. Off first:
-  // a docstring card carries a paragraph, and a screenful of paragraphs hides the boxes.
-  showDocs(): boolean {
-    return this.overlay.showDocs === true;
-  }
-  toggleDocs(): void {
-    this.overlay.showDocs = !this.showDocs();
-    this.scheduleSave();
-  }
-  docNotePos(key: string): Point | null {
-    return this.overlay.docNotes[key] ?? null;
-  }
-  setDocNotePos(key: string, p: Point): void {
-    this.overlay.docNotes[key] = { x: Math.round(p.x), y: Math.round(p.y) };
-    this.scheduleSave();
-  }
 
   isCollapsed(key: string): boolean {
     return this.overlay.collapsed[key] ?? false;
@@ -314,11 +298,9 @@ function normalize(o: Partial<Overlay>): Overlay {
     notes: o.notes ?? [],
     images: o.images ?? [],
     groups: o.groups ?? [],
-    docNotes: o.docNotes ?? {},
     // A board saved under the old inverted flags carries `hide*`. Its author's choice is what
     // matters, so translate rather than drop: `hideX: false` meant "show", and a board with
     // neither field is simply new and takes the current default (off).
-    showDocs: o.showDocs ?? (o.hideDocs === undefined ? undefined : !o.hideDocs),
     showFunctions:
       o.showFunctions ?? (o.hideFunctions === undefined ? undefined : !o.hideFunctions),
     edgeMode: o.edgeMode,

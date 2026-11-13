@@ -110,12 +110,14 @@
       .cb-modal {
         width: min(760px, 92vw); max-height: 84vh; display: flex; flex-direction: column;
         background: rgba(255, 255, 255, 0.92); border: 1px solid var(--glass-edge);
-        border-radius: 16px; box-shadow: 0 24px 70px rgba(120, 80, 150, 0.3); overflow: hidden;
+        border-radius: 16px; box-shadow: 0 24px 70px rgba(120, 80, 150, 0.3);
         backdrop-filter: blur(20px);
+        overflow-y: auto; /* one scroll for the docstring and the code, so the code is never squeezed */
       }
       .cb-head {
         display: flex; align-items: center; gap: 12px; padding: 13px 16px;
         border-bottom: 1px solid rgba(120, 90, 160, 0.14);
+        position: sticky; top: 0; z-index: 1; background: #fbf9fd;
       }
       .cb-title { font-size: 15px; font-family: var(--mono); color: #3d3556; }
       .cb-title .cb-owner { color: #9b6dd6; }
@@ -123,12 +125,60 @@
       .cb-close { margin-left: auto; padding: 2px 9px; border-radius: 999px; line-height: 1.2; }
       .cb-sub { padding: 7px 16px 0; color: #8a7fa0; font-size: 11.5px; font-family: var(--mono); }
       .cb-doc { margin: 11px 16px 6px; color: #4a4363; }
+      .cb-doc > :last-child { margin-bottom: 0; }
       .cb-doc.cb-empty { color: #9a90ad; font-style: italic; }
+      /* the source, in PyCharm's default light theme (IntelliJ Light) */
       .cb-src {
-        margin: 6px 16px 16px; padding: 13px 15px; overflow: auto;
-        background: rgba(250, 246, 253, 0.9); border: 1px solid rgba(120, 90, 160, 0.16);
-        border-radius: 10px; font: 12.5px/1.55 var(--mono); color: #3a3352; white-space: pre;
+        flex-shrink: 0; margin: 6px 16px 16px; padding: 13px 15px; overflow-x: auto;
+        background: #ffffff; border: 1px solid #ebecf0;
+        border-radius: 10px; font: 13px/1.6 "JetBrains Mono", var(--mono); color: #080808;
+        white-space: pre; tab-size: 4;
       }
+      .hl-kw { color: #0033b3; }
+      .hl-str { color: #067d17; }
+      .hl-doc { color: #067d17; font-style: italic; }
+      .hl-com { color: #8c8c8c; font-style: italic; }
+      .hl-num { color: #1750eb; }
+      .hl-deco { color: #9e880d; }
+      .hl-fn { color: #00627a; }
+      .hl-self { color: #94558d; }
+      .hl-bi { color: #000080; }
+      .hl-dunder { color: #b200b2; }
+      .hl-kwarg { color: #660099; }
+
+      /* a docstring rendered from Google / NumPy sections and Markdown-style marks */
+      .ds { line-height: 1.5; }
+      .ds p { margin: 0 0 7px; }
+      .ds .ds-sec { margin: 9px 0 3px; font-weight: 600; font-size: 12px; color: #6b4fa0; }
+      .ds dl { margin: 0 0 4px; }
+      .ds dt { font-family: var(--mono); font-size: 12.5px; }
+      .ds dd { margin: 1px 0 6px 16px; }
+      .ds .ds-type { color: #8a7fa0; font-size: 12px; }
+      .ds .ds-type::before { content: "("; }
+      .ds .ds-type::after { content: ")"; }
+      .ds ul { margin: 0 0 7px; padding-left: 18px; }
+      .ds code { font-family: var(--mono); font-size: 0.92em; padding: 0 4px; border-radius: 4px;
+        background: rgba(139, 92, 246, 0.1); color: #3d3556; }
+      .ds pre { margin: 0 0 7px; padding: 6px 9px; border-radius: 7px; overflow: hidden;
+        background: rgba(250, 246, 253, 0.9); font: 12px/1.5 var(--mono); white-space: pre; }
+      .ds pre code { padding: 0; background: none; }
+
+      /* hover tip: a method's (or class's) docstring, left of its box; never takes the pointer */
+      #doctip {
+        position: fixed; left: 0; top: 0; z-index: 40; pointer-events: none;
+        width: max-content; max-width: min(440px, 44vw); max-height: 72vh; overflow: hidden;
+        padding: 10px 13px 9px; font-size: 13px; color: #3d3556;
+        background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(14px);
+        border: 1px solid var(--glass-edge); border-radius: 12px;
+        box-shadow: 0 14px 40px rgba(120, 80, 150, 0.22);
+        opacity: 0; visibility: hidden; transition: opacity 0.12s;
+      }
+      #doctip.on { opacity: 1; visibility: visible; }
+      #doctip .dt-head { margin-bottom: 7px; padding-bottom: 6px; font: 13px var(--mono);
+        border-bottom: 1px solid rgba(120, 90, 160, 0.14); }
+      #doctip .dt-owner { color: #9b6dd6; }
+      #doctip .dt-none { color: #9a90ad; font-style: italic; }
+      #doctip .ds > :last-child { margin-bottom: 0; }
       /* An exported board has no dev server behind it: scanning, browsing and loading another
          document would all fail, so they are not offered. Everything that edits the board stays. */
       body.standalone #browse,
@@ -151,7 +201,6 @@
       <button id="add-group">+ group</button>
       <button id="lines">lines: curved</button>
       <button id="fn">functions</button>
-      <button id="docs">docs</button>
       <button id="save">save</button>
       <button id="export-html">export html</button>
       <button id="load">load</button>

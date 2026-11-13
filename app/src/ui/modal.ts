@@ -1,6 +1,8 @@
-// The method detail popup: name, docstring, and source pulled from the code.
+// The method detail popup: name, docstring, and the source coloured like PyCharm.
 // Plain DOM (not SVG) so text selection and scrolling are the browser's job.
 
+import { renderDocstring } from "../docfmt";
+import { highlightCode } from "../highlight";
 import type { SeedMethod, SeedNode } from "../model";
 
 export function openMethodModal(node: SeedNode, method: SeedMethod): void {
@@ -18,10 +20,14 @@ export function openMethodModal(node: SeedNode, method: SeedMethod): void {
       <div class="cb-sub">${esc(node.module)}</div>
       ${
         method.doc
-          ? `<p class="cb-doc">${esc(method.doc)}</p>`
+          ? `<div class="cb-doc ds">${renderDocstring(method.doc)}</div>`
           : `<p class="cb-doc cb-empty">No docstring in the source.</p>`
       }
-      <pre class="cb-src"><code>${esc(method.source || "# source unavailable")}</code></pre>
+      <pre class="cb-src"><code>${
+        method.source
+          ? highlightCode(method.source, node.lang, method.name)
+          : `<span class="hl-com">${esc("# source unavailable")}</span>`
+      }</code></pre>
     </div>`;
   document.body.appendChild(backdrop);
 

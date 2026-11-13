@@ -38,15 +38,14 @@ export function wireInteractions(
 
     const rz = target.closest(".rz") as SVGElement | null;
     const handle = rz ? null : (target.closest(".eh") as SVGElement | null);
-    const docnote = rz || handle ? null : (target.closest(".docnote") as SVGElement | null);
     const item =
-      rz || handle || docnote
+      rz || handle
         ? null
         : (target.closest(".note,.image,.group") as SVGElement | null);
     const box =
-      rz || handle || docnote || item ? null : (target.closest(".nd") as SVGElement | null);
+      rz || handle || item ? null : (target.closest(".nd") as SVGElement | null);
 
-    if (!rz && !handle && !docnote && !item && !box) {
+    if (!rz && !handle && !item && !box) {
       if (store.selected()) {
         store.select(null); // clicking empty canvas deselects
         rerender();
@@ -94,20 +93,6 @@ export function wireInteractions(
       onClick = () => {
         // A click (no drag) on a line's dot flips just that line between curved and 90°.
         store.toggleEdgeModeFor(key);
-        rerender();
-      };
-    } else if (docnote) {
-      // A class's auto docstring card. Its default position isn't stored, so read the
-      // current corner off the DOM rather than from the store.
-      const key = docnote.dataset.key!;
-      const rect = docnote.querySelector("rect");
-      const x0 = Number(rect?.getAttribute("x") ?? 0);
-      const y0 = Number(rect?.getAttribute("y") ?? 0);
-      onMove = (e) => {
-        const p = at(e);
-        if (!commit(moving, start, p)) return;
-        moving = true;
-        store.setDocNotePos(key, { x: x0 + (p.x - start.x), y: y0 + (p.y - start.y) });
         rerender();
       };
     } else if (item) {

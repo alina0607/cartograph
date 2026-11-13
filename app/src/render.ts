@@ -2,19 +2,10 @@
 // renderer stateless; interaction listeners live on the container, so replacing
 // innerHTML never detaches them.
 
-import {
-  borderPoint,
-  dims,
-  edgeGeom,
-  FONT,
-  metrics,
-  MONO_FONT,
-  polylineGeom,
-  type Box,
-} from "./geometry";
+import { dims, edgeGeom, FONT, metrics, MONO_FONT, polylineGeom, type Box } from "./geometry";
 import { routeEdges } from "./route";
 import { edgeKey, edgeStyle } from "./edge";
-import { renderGroups, renderImages, renderNotes, wrap } from "./renderItems";
+import { renderGroups, renderImages, renderNotes } from "./renderItems";
 import type { Point, SeedNode } from "./model";
 import type { Store } from "./store";
 
@@ -111,14 +102,6 @@ export function renderScene(store: Store): string {
 
   const boxParts = visible.map((n) => renderBox(n, boxes.get(n.key)!, collapsedOf.get(n.key)!));
 
-  // Auto class-docstring notes: a distinct card dashed-linked to its class.
-  const docParts: string[] = [];
-  if (store.showDocs()) {
-    for (const node of visible) {
-      if (node.doc) docParts.push(docNote(node, boxes.get(node.key)!, store));
-    }
-  }
-
   // The SVG fills the container; a single #world group carries pan/zoom, so every child
   // stays in world coordinates and getScreenCTM() on #world maps screen<->world for drags.
   const b = bounds([...boxes.values()], handleParts.length ? extractHandleXY(handleParts) : []);
@@ -134,7 +117,6 @@ export function renderScene(store: Store): string {
     renderImages(store) +
     edgeParts.join("") +
     boxParts.join("") +
-    docParts.join("") + // class docstring cards, linked to their class
     handleParts.join("") +
     renderNotes(store) + // sticky notes sit on top
     `</g></svg>`
@@ -153,7 +135,14 @@ function renderBox(node: SeedNode, box: Box, collapsed: boolean): string {
       `<rect x="${round(x0)}" y="${round(y0)}" width="${d.w}" height="${round(d.h)}" rx="9" ` +
       `fill="${kind.fill}" stroke="${kind.stroke}" stroke-width="1.1" filter="url(#cardshadow)"/>` +
       langStripe(x0, y0, d.h, lang) +
-      centerText(box.cx, y0 + 23, d.title, kind.ink, false, FONT.fn) +
+      titleTarget(
+        node.key,
+        x0,
+        y0,
+        d.w,
+        d.h,
+        centerText(box.cx, y0 + 23, d.title, kind.ink, false, FONT.fn),
+      ) +
       `</g>`
     );
   }
@@ -172,7 +161,8 @@ function renderBox(node: SeedNode, box: Box, collapsed: boolean): string {
   }
   // Chevron signals (and, via a header click, toggles) collapse.
   parts.push(leftText(x0 + 7, cy + 19, collapsed ? "▸" : "▾", kind.ink2));
-  parts.push(centerText(box.cx, cy + 19, d.title, kind.ink, d.italic, FONT.title, true));
+  const title = centerText(box.cx, cy + 19, d.title, kind.ink, d.italic, FONT.title, true);
+  parts.push(titleTarget(node.key, x0 + 20, y0, d.w - 20, cy + TITLE_H - y0, title)); // not the chevron
   cy += TITLE_H;
 
   if (collapsed) {
@@ -204,35 +194,6 @@ function renderBox(node: SeedNode, box: Box, collapsed: boolean): string {
   return `<g class="nd" data-key="${attr(node.key)}">${parts.join("")}</g>`;
 }
 
-function docNote(node: SeedNode, box: Box, store: Store): string {
-  const W = 220;
-  const P = 10;
-  const LH = 17;
-  const lines = wrap(node.doc, W - P * 2);
-  const h = Math.max(38, P * 2 + lines.length * LH);
-  // Default above the class (fewer collisions than to the side in a row layout).
-  const pos = store.docNotePos(node.key) ?? { x: box.cx - W / 2, y: box.cy - box.h / 2 - h - 26 };
-  const { x, y } = pos;
-  const noteBox = { cx: x + W / 2, cy: y + h / 2, w: W, h };
-  const p0 = borderPoint(box, { x: noteBox.cx, y: noteBox.cy }); // border of the class
-  const p1 = borderPoint(noteBox, { x: box.cx, y: box.cy }); // border of the card
-  const conn =
-    `<line x1="${round(p0.x)}" y1="${round(p0.y)}" x2="${round(p1.x)}" y2="${round(p1.y)}" ` +
-    `stroke="#bd7676" stroke-width="1.2" stroke-dasharray="5 4"/>`;
-  const texts = lines
-    .map((ln, i) => leftText(x + P + 4, y + P + 12 + i * LH, ln, "#fff1f0"))
-    .join("");
-  return (
-    conn +
-    `<g class="docnote" data-key="${attr(node.key)}">` +
-    `<rect x="${round(x)}" y="${round(y)}" width="${W}" height="${round(h)}" rx="8" ` +
-    `fill="#c98787" stroke="#aa6a6a" filter="url(#cardshadow)"/>` +
-    `<rect x="${round(x)}" y="${round(y)}" width="4" height="${round(h)}" rx="2" fill="#8f4f4f"/>` +
-    texts +
-    `</g>`
-  );
-}
-
 type Lang = (typeof LANG_STYLE)[string] | undefined;
 
 // A coloured left stripe marking the source language (rounded to sit inside the card corner).
@@ -258,6 +219,24 @@ function sep(x: number, y: number, w: number, color: string): string {
   return `<line x1="${round(x)}" y1="${round(y)}" x2="${round(x + w)}" y2="${round(
     y,
   )}" stroke="${color}" stroke-opacity="0.4" stroke-width="1"/>`;
+}
+
+// A class's title plus an invisible area around it: resting the pointer there shows the class
+// docstring. One group, so the pointer finds it whether it is over the text or the space around.
+function titleTarget(
+  key: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  inner: string,
+): string {
+  return (
+    `<g class="ttl" data-key="${attr(key)}">` +
+    `<rect x="${round(x)}" y="${round(y)}" width="${round(w)}" height="${round(h)}" fill="transparent"/>` +
+    inner +
+    `</g>`
+  );
 }
 
 function centerText(
@@ -325,7 +304,12 @@ function decoration(id: string, pt: Point, dir: Point, color: string): string {
     const mid = { x: pt.x + dir.x * (Ld / 2), y: pt.y + dir.y * (Ld / 2) };
     const fill = id === "m-diamond-fill" ? color : "#fff";
     return poly(
-      [pt, { x: mid.x + px * Wd, y: mid.y + py * Wd }, back, { x: mid.x - px * Wd, y: mid.y - py * Wd }],
+      [
+        pt,
+        { x: mid.x + px * Wd, y: mid.y + py * Wd },
+        back,
+        { x: mid.x - px * Wd, y: mid.y - py * Wd },
+      ],
       fill,
       color,
       1.4,

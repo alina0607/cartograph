@@ -22,8 +22,7 @@ SOURCE_FILES = ("index.html", "package-lock.json", "vite.config.ts", "scripts/bu
 
 def empty_overlay() -> dict[str, Any]:
     """The hand-made layer of a board nobody has arranged yet (``emptyOverlay`` in the app)."""
-    return {"boxes": {}, "edges": {}, "collapsed": {}, "notes": [], "images": [], "groups": [],
-            "docNotes": {}}
+    return {"boxes": {}, "edges": {}, "collapsed": {}, "notes": [], "images": [], "groups": []}
 
 
 def viewer_template() -> str:

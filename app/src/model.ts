@@ -17,6 +17,11 @@ export interface SeedNode {
   methods: SeedMethod[];
 }
 
+// Classes that come from outside the scanned project: drawn dashed, with no members of their own.
+export function isOutside(kind: string): boolean {
+  return kind === "stdlib" || kind === "library" || kind === "ml";
+}
+
 export interface SeedRelation {
   src: string;
   dst: string;
@@ -85,14 +90,10 @@ export interface Overlay {
   notes: NoteItem[];
   images: ImageItem[];
   groups: GroupItem[];
-  docNotes: Record<string, Point>; // per-class doc-note position override (keyed by node key)
-  // Both default to OFF: a first look should show the type architecture, not every function and
-  // every docstring paragraph. `hide*` are the older inverted flags, still read when loading a
-  // board saved before the default flipped — ignoring them would silently re-show what its
-  // author had switched off.
-  showDocs?: boolean; // the auto class-docstring notes
+  // Defaults to OFF: a first look should show the type architecture, not every function.
+  // `hideFunctions` is the older inverted flag, still read when loading a board saved before the
+  // default flipped — ignoring it would silently re-show what its author had switched off.
   showFunctions?: boolean; // standalone-function nodes + call edges
-  hideDocs?: boolean; // deprecated, read on load only
   hideFunctions?: boolean; // deprecated, read on load only
   edgeMode?: "curved" | "orthogonal"; // relationship line routing (default 90°)
 }
@@ -100,7 +101,7 @@ export interface Overlay {
 export type EdgeMode = "curved" | "orthogonal";
 
 export function emptyOverlay(): Overlay {
-  return { boxes: {}, edges: {}, collapsed: {}, notes: [], images: [], groups: [], docNotes: {} };
+  return { boxes: {}, edges: {}, collapsed: {}, notes: [], images: [], groups: [] };
 }
 
 // A whole board: facts + the hand-made layer. This is what save/load reads and writes.
