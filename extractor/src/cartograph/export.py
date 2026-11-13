@@ -30,9 +30,27 @@ def viewer_template() -> str:
     return files("cartograph").joinpath("viewer.html").read_text(encoding="utf-8")
 
 
-def export_html(seed: dict[str, Any], scope: str) -> str:
-    """Return a self-contained HTML page showing ``seed`` with the app's default layout."""
-    doc = {"version": 1, "scope": scope, "seed": seed, "overlay": empty_overlay()}
+def load_layout(path: Path) -> dict[str, Any]:
+    """Return the hand-made layer of a board saved with the app's **save** button.
+
+    Only the overlay is kept: the seed in that file is stale by design, and a fresh scan
+    replaces it. Missing parts take their empty defaults.
+    """
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    overlay = doc.get("overlay") if isinstance(doc, dict) else None
+    if not isinstance(overlay, dict):
+        raise ValueError(f"{path} is not a saved cartograph board (no 'overlay')")
+    return {**empty_overlay(), **overlay}
+
+
+def export_html(seed: dict[str, Any], scope: str, overlay: dict[str, Any] | None = None) -> str:
+    """Return a self-contained HTML page showing ``seed``.
+
+    ``overlay`` is the board's hand-made layer (positions, bends, notes, view); without one
+    the app lays the board out itself. The page loads it on every open, so a visitor's own
+    dragging lasts until they reload.
+    """
+    doc = {"version": 1, "scope": scope, "seed": seed, "overlay": overlay or empty_overlay()}
     # ``<`` escaped: a docstring or method source may contain ``</script>``.
     payload = json.dumps(doc, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
     filled, n = _SLOT.subn(lambda m: m.group(1) + payload + m.group(3), viewer_template(), count=1)

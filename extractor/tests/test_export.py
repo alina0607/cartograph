@@ -57,3 +57,37 @@ def test_bundled_viewer_was_built_from_the_current_app() -> None:
     assert recorded == app_sources_hash(APP), (
         "app sources changed since viewer.html was bundled: run `npm run build:viewer` in app/"
     )
+
+
+def _saved_board(tmp_path: Path, overlay: dict[str, object]) -> Path:
+    """A file like the app's **save** button writes: a stale seed plus the overlay."""
+    path = tmp_path / "saved.json"
+    stale = {"version": 1, "nodes": [{"key": "old.py#Gone"}], "relations": []}
+    path.write_text(json.dumps({"version": 1, "scope": "p", "seed": stale, "overlay": overlay}))
+    return path
+
+
+def test_layout_embeds_the_saved_overlay_with_the_fresh_seed(tmp_path: Path) -> None:
+    (tmp_path / "proj").mkdir()
+    (tmp_path / "proj" / "core.py").write_text("class Core:\n    pass\n")
+    layout = _saved_board(tmp_path, {"boxes": {"core.py#Core": {"x": 400, "y": 120}}})
+    board = tmp_path / "board.html"
+    assert main([str(tmp_path / "proj"), "--html", str(board), "--layout", str(layout)]) == 0
+    doc = _embedded(board.read_text(encoding="utf-8"))
+    assert doc["overlay"] == {**empty_overlay(), "boxes": {"core.py#Core": {"x": 400, "y": 120}}}
+    assert [n["key"] for n in doc["seed"]["nodes"]] == ["core.py#Core"]  # type: ignore[index]
+
+
+def test_layout_needs_html(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit):
+        main([str(tmp_path), "--layout", str(_saved_board(tmp_path, {}))])
+
+
+def test_layout_that_is_not_a_saved_board_is_rejected(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps({"version": 1, "nodes": []}))  # a seed, not a board
+    with pytest.raises(SystemExit):
+        main([str(tmp_path), "--html", str(tmp_path / "b.html"), "--layout", str(bad)])
+    assert "not a saved cartograph board" in capsys.readouterr().err
