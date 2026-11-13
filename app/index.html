@@ -93,13 +93,22 @@
       #legend .lg-row { display: flex; align-items: center; gap: 9px; white-space: nowrap; }
       #legend .lg-sw { width: 34px; text-align: center; font-weight: 700; letter-spacing: -1px; }
       #legend .lg-sep { height: 1px; margin: 4px 0; background: var(--glass-edge); }
+      #legend .lg-title { margin: 2px 0 1px; font-size: 10.5px; font-weight: 600; color: #8a7fa0;
+        text-transform: uppercase; letter-spacing: 0.06em; }
+      #legend .lg-box { display: inline-block; width: 18px; height: 12px; border-radius: 3px;
+        vertical-align: middle; box-sizing: border-box; }
       /* a relation row highlights its edges; a click anywhere on the canvas clears it */
       #legend .lg-pick { cursor: pointer; border-radius: 7px; margin: 0 -6px; padding: 1px 6px; }
       #legend .lg-pick:hover { background: rgba(139, 92, 246, 0.1); }
       #legend .lg-pick.active { background: rgba(139, 92, 246, 0.2); color: #3d3556; font-weight: 600; }
       #app.hl g.edge { opacity: 0.12; transition: opacity 0.15s; }
       #app.hl g.edge.on { opacity: 1; }
+      #app.hl g.edge.touch { opacity: 0.75; }
       #app.hl g.edge.on path, #app.hl g.edge.on polygon { stroke-width: 3.4; }
+      #app.hl g.nd { opacity: 0.28; transition: opacity 0.15s; }
+      #app.hl g.nd.on { opacity: 1; }
+      #app.hl g.nd.on > rect:first-child { stroke: #7c3aed; stroke-width: 3; }
+      #app.hl .eh { opacity: 0.15; } /* the bend dots would otherwise stay bright */
 
       /* method detail popup */
       .cb-backdrop {

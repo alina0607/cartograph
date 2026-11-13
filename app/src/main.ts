@@ -2,7 +2,8 @@ import "@fontsource-variable/inter";
 import { isOutside, type CodeboardDoc, type Seed, type SeedNode } from "./model";
 import { MONO_FONT, setTextMeasurer } from "./geometry";
 import { Store } from "./store";
-import { LANG_STYLE, ORIGIN_STYLE, renderScene } from "./render";
+import { KIND_LEGEND, kindSwatch, LANG_STYLE, renderScene } from "./render";
+import { litBy } from "./legendPick";
 import { wireInteractions } from "./interactions";
 import { openMethodModal } from "./ui/modal";
 import { wireDocTips } from "./ui/doctip";
@@ -133,13 +134,15 @@ const LEGEND_ORDER = [
 
 function updateLegend(seed: Seed): void {
   const present = new Set(seed.relations.map((r) => r.kind));
+  // Every row is a button: a click lights up what it stands for (see legendPick.ts).
+  const pickRow = (pick: string, title: string, color: string, glyph: string, label: string) =>
+    `<div class="lg-row lg-pick" data-pick="${pick}" title="${title}">` +
+    `<span class="lg-sw" style="color:${color}">${glyph}</span>${label}</div>`;
   const rows = LEGEND_ORDER.filter((k) => present.has(k))
     .map((k) => {
       const e = LEGEND[k]!;
-      return (
-        `<div class="lg-row lg-pick" data-kind="${k}" title="highlight these arrows">` +
-        `<span class="lg-sw" style="color:${e.color}">${e.glyph}</span>${e.label}</div>`
-      );
+      const title = "highlight these arrows and their classes";
+      return pickRow(`edge:${k}`, title, e.color, e.glyph, e.label);
     })
     .join("");
   // Which languages are on the board, so the stripe / badge colours are decoded.
@@ -149,31 +152,43 @@ function updateLegend(seed: Seed): void {
   const langRows = langs
     .map((l) => {
       const e = LANG_STYLE[l]!;
-      return `<div class="lg-row"><span class="lg-sw" style="color:${e.color}">■</span>${e.label}</div>`;
+      return pickRow(`lang:${l}`, "highlight these classes", e.color, "■", e.label);
     })
     .join("");
-  // Where outside-the-scan classes come from (standard library vs installed package).
+  // What each box colour means: the kind of type, or where an outside class comes from.
   const kinds = new Set(seed.nodes.map((n) => n.kind));
-  const originRows = Object.entries(ORIGIN_STYLE)
-    .filter(([k]) => kinds.has(k))
-    .map(([, e]) => `<div class="lg-row"><span class="lg-sw" style="color:${e.color}">■</span>${e.label}</div>`)
+  if (!store?.showFunctions()) kinds.delete("function"); // hidden: nothing to light up
+  const kindRows = KIND_LEGEND.filter(([k]) => kinds.has(k))
+    .map(([k, label]) => pickRow(`kind:${k}`, "highlight these classes", "", kindSwatch(k), label))
     .join("");
-  const sections = [rows, originRows, langRows].filter(Boolean);
+  const title = (text: string) => `<div class="lg-title">${text}</div>`;
+  const sections = [
+    rows && title("arrows") + rows,
+    kindRows && title("box colours") + kindRows,
+    langRows && title("languages (left stripe)") + langRows,
+  ].filter(Boolean);
   legendEl.innerHTML = sections.join(`<div class="lg-sep"></div>`);
   legendEl.classList.toggle("on", sections.length > 0);
-  if (highlightKind && !present.has(highlightKind)) highlightKind = null;
+  // A picked row that is gone (after a re-scan, a load, or hiding functions) is dropped.
+  if (picked && !legendEl.querySelector(`[data-pick="${CSS.escape(picked)}"]`)) picked = null;
 }
 
-// The relation kind whose edges are highlighted (picked in the legend), or null.
-let highlightKind: string | null = null;
+// The legend row whose things are highlighted, as `by:value` (see legendPick.ts), or null.
+let picked: string | null = null;
 
 function applyHighlight(): void {
-  app.classList.toggle("hl", highlightKind !== null);
+  app.classList.toggle("hl", picked !== null && store !== undefined);
+  const lit = picked && store ? litBy(store.seed, picked) : null;
   app.querySelectorAll<SVGGElement>("g.edge").forEach((g) => {
-    g.classList.toggle("on", g.dataset.kind === highlightKind);
+    const key = g.dataset.edge ?? "";
+    g.classList.toggle("on", !!lit?.edges.has(key));
+    g.classList.toggle("touch", !!lit?.touch.has(key));
+  });
+  app.querySelectorAll<SVGGElement>("g.nd").forEach((g) => {
+    g.classList.toggle("on", !!lit?.nodes.has(g.dataset.key ?? ""));
   });
   legendEl.querySelectorAll<HTMLElement>(".lg-pick").forEach((row) => {
-    row.classList.toggle("active", row.dataset.kind === highlightKind);
+    row.classList.toggle("active", row.dataset.pick === picked);
   });
 }
 
@@ -181,16 +196,16 @@ async function boot(): Promise<void> {
   legendEl.addEventListener("click", (ev) => {
     const row = (ev.target as Element).closest<HTMLElement>(".lg-pick");
     if (!row) return;
-    const kind = row.dataset.kind ?? null;
-    highlightKind = highlightKind === kind ? null : kind; // a second click turns it off
+    const pick = row.dataset.pick ?? null;
+    picked = picked === pick ? null : pick; // a second click turns it off
     applyHighlight();
   });
   // Any press on the canvas clears the highlight (capture: before panning or dragging starts).
   app.addEventListener(
     "pointerdown",
     () => {
-      if (highlightKind) {
-        highlightKind = null;
+      if (picked) {
+        picked = null;
         applyHighlight();
       }
     },
@@ -252,6 +267,7 @@ async function boot(): Promise<void> {
   document.getElementById("fn")!.addEventListener("click", () => {
     if (store) {
       store.toggleFunctions();
+      updateLegend(store.seed);
       rerender();
     }
   });

@@ -40,12 +40,25 @@ const BOX_KINDS: Record<string, BoxKind> = {
 // Language is a second visual channel (box colour already encodes the UML kind): a coloured
 // left stripe on every box plus a short tag, so Python / TypeScript / Go tell apart at a
 // glance and mixed-language scans are readable.
-// Legend rows for the outside-the-scan box colours (matching BOX_KINDS above).
-export const ORIGIN_STYLE: Record<string, { color: string; label: string }> = {
-  stdlib: { color: "#8b95a1", label: "standard library class" },
-  library: { color: "#4f9c6e", label: "third-party library class" },
-  ml: { color: "#d9822b", label: "ML library class (torch, sklearn, …)" },
-};
+// The legend's table of box colours, in display order. The colours are BOX_KINDS'.
+export const KIND_LEGEND: [kind: string, label: string][] = [
+  ["class", "class"],
+  ["abstract", "abstract class (name in italics)"],
+  ["interface", "interface / Protocol"],
+  ["struct", "struct"],
+  ["metaclass", "metaclass"],
+  ["function", "function"],
+  ["stdlib", "standard library class"],
+  ["library", "third-party library class"],
+  ["ml", "ML library class (torch, sklearn, …)"],
+];
+
+/** A legend swatch: a small box filled and outlined like that kind's boxes. */
+export function kindSwatch(kind: string): string {
+  const k = BOX_KINDS[kind] ?? BOX_KINDS.class!;
+  const line = k.dash ? "dashed" : "solid";
+  return `<i class="lg-box" style="background:${k.fill};border:1.5px ${line} ${k.stroke}"></i>`;
+}
 
 export const LANG_STYLE: Record<string, { tag: string; color: string; label: string }> = {
   python: { tag: "py", color: "#2b6cb0", label: "Python" },
@@ -86,13 +99,15 @@ export function renderScene(store: Store): string {
         : edgeGeom(src, dst, bend);
     const st = edgeStyle(rel);
     const dash = st.dash ? ` stroke-dasharray="${st.dash}"` : "";
-    // One group per edge, tagged with its kind, so the legend can highlight a kind.
+    // One group per edge, tagged with its key and kind, so the legend can highlight it.
     const parts = [
       `<path d="${geom.path}" fill="none" stroke="${st.color}" stroke-width="1.8"${dash}/>`,
     ];
     if (st.markerEnd) parts.push(decoration(st.markerEnd, geom.p1, geom.dirEnd, st.color));
     if (st.markerStart) parts.push(decoration(st.markerStart, geom.p0, geom.dirStart, st.color));
-    edgeParts.push(`<g class="edge" data-kind="${attr(rel.kind)}">${parts.join("")}</g>`);
+    edgeParts.push(
+      `<g class="edge" data-edge="${attr(key)}" data-kind="${attr(rel.kind)}">${parts.join("")}</g>`,
+    );
     handleParts.push(
       `<circle class="eh" data-edge="${attr(key)}" cx="${round(geom.handle.x)}" cy="${round(
         geom.handle.y,
