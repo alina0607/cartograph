@@ -10,6 +10,8 @@ graph keeps only those that resolve to a type in the same scan.
 
 from __future__ import annotations
 
+import textwrap
+
 import tree_sitter_typescript as tsts
 from tree_sitter import Language, Parser
 from tree_sitter import Node as TSNode
@@ -200,7 +202,7 @@ def _members(
             nm = _member_name(m)
             if nm is None:
                 continue
-            source = _text(m, src) if m.type == "method_definition" else ""
+            source = _method_source(m, src) if m.type == "method_definition" else ""
             methods.append(Method(name=_text(nm, src), doc=_leading_doc(m, src), source=source))
             _scan_constructions(m, src, composes, constructs)
 
@@ -346,6 +348,18 @@ def _clean_comment(text: str) -> str:
 
 def _first(node: TSNode, type_: str) -> TSNode | None:
     return next((c for c in node.named_children if c.type == type_), None)
+
+
+def _method_source(m: TSNode, src: bytes) -> str:
+    """The method as it reads in the file: its decorators (sibling nodes just before it) included
+    and the class's indent removed. Left as the bare span when code shares its first line."""
+    start = m
+    while start.prev_named_sibling is not None and start.prev_named_sibling.type == "decorator":
+        start = start.prev_named_sibling
+    line_start = src.rfind(b"\n", 0, start.start_byte) + 1
+    if src[line_start : start.start_byte].strip():
+        return _text(m, src)
+    return textwrap.dedent(src[line_start : m.end_byte].decode("utf-8", "replace"))
 
 
 def _text(node: TSNode, src: bytes) -> str:

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ast
 import builtins
+import textwrap
 from collections.abc import Callable
 
 from cartograph.model import (
@@ -170,16 +171,24 @@ def _class(
 def _methods(cls: ast.ClassDef, source: str) -> tuple[Method, ...]:
     """Direct methods of the class, each with its docstring and own source text."""
     out: list[Method] = []
+    lines = source.splitlines(keepends=True)
     for m in cls.body:
         if isinstance(m, ast.FunctionDef | ast.AsyncFunctionDef):
             out.append(
                 Method(
                     name=m.name,
                     doc=ast.get_docstring(m) or "",
-                    source=ast.get_source_segment(source, m) or "",
+                    source=_method_source(lines, m),
                 )
             )
     return tuple(out)
+
+
+def _method_source(lines: list[str], m: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
+    """The method as it reads in the file: decorators included, the class's indent removed."""
+    first = min([d.lineno for d in m.decorator_list] + [m.lineno]) - 1
+    last = m.end_lineno or m.lineno
+    return textwrap.dedent("".join(lines[first:last])).rstrip("\n")
 
 
 def _relations(
