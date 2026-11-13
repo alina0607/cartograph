@@ -32,7 +32,17 @@ FUNCTION = "function"  # a standalone (module-level) function, for the call grap
 METACLASS = "metaclass"  # a class whose instances are classes (it derives from ``type``)
 # Classes outside the scan, drawn only where a scanned class inherits from or owns one.
 STDLIB = "stdlib"  # from the Python standard library (``collections.Counter``, ``abc.ABCMeta``)
-LIBRARY = "library"  # from an installed third-party package (``torch.nn.Module``)
+LIBRARY = "library"  # from an installed third-party package (``pydantic.BaseModel``)
+ML = "ml"  # from a machine-learning package (``torch.nn.Module``, ``sklearn``); see ML_PACKAGES
+
+# Top-level packages whose classes count as ML: deep learning, classical ML and model hubs.
+# Numerical and data packages (numpy, pandas, scipy) stay ordinary third-party libraries.
+ML_PACKAGES = frozenset({
+    "torch", "torchvision", "torchaudio", "lightning", "pytorch_lightning", "timm",
+    "tensorflow", "keras", "jax", "flax", "optax",
+    "sklearn", "xgboost", "lightgbm", "catboost",
+    "transformers", "sentence_transformers", "datasets", "accelerate", "peft", "diffusers",
+})
 
 
 def node_key(module: str, name: str) -> str:

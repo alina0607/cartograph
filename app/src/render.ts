@@ -37,9 +37,11 @@ const BOX_KINDS: Record<string, BoxKind> = {
   // Metaclasses make classes, so they get their own warm colour, matching the instanceof edge.
   metaclass: { fill: "#f2b48f", stroke: "#d98c5f", ink: "#3b1d0a", ink2: "#5a2f14" },
   // Classes outside the scan (drawn where a scanned class inherits from or owns one): pale and
-  // dashed so they read as context, grey for the standard library, green for installed packages.
+  // dashed so they read as context: grey for the standard library, green for installed packages,
+  // orange for ML libraries (ML_PACKAGES in the extractor).
   stdlib: { fill: "#e3e7ec", stroke: "#8b95a1", ink: "#1f2a36", ink2: "#4a5562", dash: "5 3" },
   library: { fill: "#c3ead2", stroke: "#4f9c6e", ink: "#123a24", ink2: "#2c5a40", dash: "5 3" },
+  ml: { fill: "#ffe3c7", stroke: "#d9822b", ink: "#4a2a0a", ink2: "#7a4a1c", dash: "5 3" },
   // Functions are neutral grey so they read as a different layer from the coloured types.
   function: { fill: "#aeb3bd", stroke: "#8b909c", ink: "#232630", ink2: "#3a3d47" },
 };
@@ -51,6 +53,7 @@ const BOX_KINDS: Record<string, BoxKind> = {
 export const ORIGIN_STYLE: Record<string, { color: string; label: string }> = {
   stdlib: { color: "#8b95a1", label: "standard library class" },
   library: { color: "#4f9c6e", label: "third-party library class" },
+  ml: { color: "#d9822b", label: "ML library class (torch, sklearn, …)" },
 };
 
 export const LANG_STYLE: Record<string, { tag: string; color: string; label: string }> = {

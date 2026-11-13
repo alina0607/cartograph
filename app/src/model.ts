@@ -10,7 +10,7 @@ export interface SeedNode {
   key: string;
   name: string;
   module: string;
-  kind: string; // class | abstract | interface | struct | metaclass | function | stdlib | library
+  kind: string; // class | abstract | interface | struct | metaclass | function | stdlib | library | ml
   lang: string; // python | typescript | go
   doc: string; // the class docstring
   attributes: [string, string][]; // [name, type]

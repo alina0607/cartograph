@@ -24,7 +24,7 @@ def test_structural_edges_stay_within_language() -> None:
     for r in seed.relations:
         if r.kind == "contract":
             continue
-        if node[r.dst].kind in ("stdlib", "library"):
+        if node[r.dst].kind in ("stdlib", "library", "ml"):
             # a class outside the scan takes the language of the class that points at it
             assert node[r.dst].lang == node[r.src].lang
             continue

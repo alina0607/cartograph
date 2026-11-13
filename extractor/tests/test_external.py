@@ -18,9 +18,10 @@ def test_external_kinds() -> None:
         "collections#Counter": "stdlib",
         "enum#Enum": "stdlib",
         "builtins#ValueError": "stdlib",
-        "torch.nn#Module": "library",
-        "torch.nn#Embedding": "library",
-        "torch.nn#Linear": "library",
+        "pydantic#BaseModel": "library",
+        "torch.nn#Module": "ml",
+        "torch.nn#Embedding": "ml",
+        "torch.nn#Linear": "ml",
     }
 
 
@@ -28,6 +29,7 @@ def test_external_relations() -> None:
     edges = {(r.src, r.dst, r.kind) for r in build_seed(FIXTURE).relations}
     assert edges == {
         (M + "Meta", "abc#ABCMeta", "inherits"),
+        (M + "Settings", "pydantic#BaseModel", "inherits"),
         (M + "Net", "torch.nn#Module", "inherits"),
         (M + "Net", "torch.nn#Embedding", "composition"),
         (M + "Net", "torch.nn#Linear", "composition"),

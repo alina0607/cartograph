@@ -4,6 +4,7 @@ from abc import ABCMeta
 from collections import Counter
 from enum import Enum
 
+import pydantic
 import torch.nn as tnn
 from py_ext.config import Missing
 from torch import nn
@@ -15,8 +16,12 @@ class Meta(ABCMeta):
     """Inherits a standard-library metaclass."""
 
 
+class Settings(pydantic.BaseModel):
+    """Inherits a third-party class that is not an ML library."""
+
+
 class Net(nn.Module):
-    """Inherits a third-party class and owns two more."""
+    """Inherits an ML-library class and owns two more."""
 
     def __init__(self) -> None:
         super().__init__()

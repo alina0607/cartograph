@@ -89,7 +89,7 @@ function fitToContent(minZoom = 0.12): void {
 
 function nodeCounts(seed: Seed): string {
   const fns = seed.nodes.filter((n) => n.kind === "function").length;
-  const ext = seed.nodes.filter((n) => n.kind === "stdlib" || n.kind === "library").length;
+  const ext = seed.nodes.filter((n) => ["stdlib", "library", "ml"].includes(n.kind)).length;
   const cls = seed.nodes.length - fns - ext;
   const parts = [`${cls} class${cls === 1 ? "" : "es"}`];
   if (ext) parts.push(`${ext} outside`);

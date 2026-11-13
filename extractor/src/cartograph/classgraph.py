@@ -32,6 +32,8 @@ from cartograph.model import (
     INTERFACE,
     LIBRARY,
     METACLASS,
+    ML,
+    ML_PACKAGES,
     STDLIB,
     Node,
     Reference,
@@ -285,7 +287,12 @@ def external_nodes(nodes: list[Node], relations: tuple[Relation, ...]) -> list[N
             continue
         module, name = r.dst.split("#", 1)
         top = module.split(".", 1)[0]
-        kind = STDLIB if top == "builtins" or top in sys.stdlib_module_names else LIBRARY
+        if top == "builtins" or top in sys.stdlib_module_names:
+            kind = STDLIB
+        elif top in ML_PACKAGES:
+            kind = ML
+        else:
+            kind = LIBRARY
         lang = lang_of.get(r.src, "")
         out[r.dst] = Node(key=r.dst, name=name, module=module, kind=kind, lang=lang)
     return [out[k] for k in sorted(out)]
