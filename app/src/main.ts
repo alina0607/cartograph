@@ -9,6 +9,7 @@ import { openMethodModal } from "./ui/modal";
 import { wireDocTips } from "./ui/doctip";
 import { escapeHtml } from "./docfmt";
 import { fitView } from "./view";
+import { arrowRows } from "./legend";
 
 // Size boxes to the text as this browser draws it: the monospace font differs between
 // machines, and an estimate leaves long lines spilling past their box.
@@ -93,43 +94,20 @@ function updateLinesLabel(): void {
   btn.textContent = store?.edgeMode() === "orthogonal" ? "lines: 90°" : "lines: curved";
 }
 
-const LEGEND: Record<string, { glyph: string; color: string; label: string }> = {
-  inherits: { glyph: "▷", color: "#a86bff", label: "inherits" },
-  implements: { glyph: "▷", color: "#a86bff", label: "implements (dashed)" },
-  composition: { glyph: "◆", color: "#f4c26f", label: "composition — owns" },
-  aggregation: { glyph: "◇", color: "#f4c26f", label: "aggregation — has-many" },
-  association: { glyph: "→", color: "#5ec8a0", label: "association — uses" },
-  dependency: { glyph: "⇢", color: "#8894c4", label: "dependency — transient" },
-  import: { glyph: "⇢", color: "#8894c4", label: "import" },
-  contract: { glyph: "⇠⇢", color: "#db2777", label: "cross-language" },
-  calls: { glyph: "→", color: "#2e78c9", label: "calls (function)" },
-  instanceof: { glyph: "⇢", color: "#c2410c", label: "instance of — metaclass" },
-};
-const LEGEND_ORDER = [
-  "inherits",
-  "implements",
-  "instanceof",
-  "composition",
-  "aggregation",
-  "association",
-  "dependency",
-  "import",
-  "contract",
-  "calls",
-];
-
 function updateLegend(seed: Seed): void {
   const present = new Set(seed.relations.map((r) => r.kind));
   // Every row is a button: a click lights up what it stands for (see legendPick.ts).
   const pickRow = (pick: string, title: string, color: string, glyph: string, label: string) =>
     `<div class="lg-row lg-pick" data-pick="${pick}" title="${title}">` +
     `<span class="lg-sw" style="color:${color}">${glyph}</span>${label}</div>`;
-  const rows = LEGEND_ORDER.filter((k) => present.has(k))
-    .map((k) => {
-      const e = LEGEND[k]!;
-      const title = "highlight these arrows and their classes";
-      return pickRow(`edge:${k}`, title, e.color, e.glyph, e.label);
-    })
+  // Every arrow kind is listed; the ones not on this board are greyed and not clickable.
+  const rows = arrowRows(present)
+    .map((r) =>
+      r.present
+        ? pickRow(`edge:${r.kind}`, "highlight these arrows and their classes", r.color, r.glyph, r.label)
+        : `<div class="lg-row lg-absent" title="none on this board">` +
+          `<span class="lg-sw">${r.glyph}</span>${r.label}</div>`,
+    )
     .join("");
   // Which languages are on the board, so the stripe / badge colours are decoded.
   const langs = [...new Set(seed.nodes.map((n) => n.lang))]

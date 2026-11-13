@@ -255,29 +255,44 @@ def _constructions(
                 if name and _is_ctor_name(name):
                     constructs.add(name)
             if isinstance(sub, ast.Assign | ast.AnnAssign):
-                stored = _stored_construction(sub)
-                if stored:
-                    composes.add(stored)
-                    q = _qualname(sub.value, imports) if sub.value is not None else ""
+                call = _stored_construction(sub)
+                name = _name_of(call.func) if call is not None else None
+                if call is not None and name:
+                    composes.add(name)
+                    q = _qualname(call, imports)
                     if q:
-                        composed_as[stored] = q
+                        composed_as[name] = q
     return composes, constructs, composed_as
 
 
-def _stored_construction(node: ast.Assign | ast.AnnAssign) -> str | None:
+def _stored_construction(node: ast.Assign | ast.AnnAssign) -> ast.Call | None:
     if node.value is None:
         return None
     targets = node.targets if isinstance(node, ast.Assign) else [node.target]
     if not any(_self_attr_name(t) for t in targets):
         return None
-    return _construction_type(node.value)
+    return _construction(node.value)
 
 
-def _construction_type(value: ast.expr) -> str | None:
+def _construction(value: ast.expr) -> ast.Call | None:
+    """The constructor call a stored value comes from, or None.
+
+    Besides ``Cls(...)`` itself this sees the default-or-given idioms, where the class still
+    builds the object it holds whenever the caller passes none: ``x or Cls()`` and
+    ``Cls() if x is None else x``.
+    """
     if isinstance(value, ast.Call):
         name = _name_of(value.func)
-        if name and _is_ctor_name(name):
-            return name
+        return value if name and _is_ctor_name(name) else None
+    branches: list[ast.expr] = []
+    if isinstance(value, ast.BoolOp) and isinstance(value.op, ast.Or):
+        branches = value.values
+    elif isinstance(value, ast.IfExp):
+        branches = [value.body, value.orelse]
+    for branch in branches:
+        call = _construction(branch)
+        if call is not None:
+            return call
     return None
 
 
