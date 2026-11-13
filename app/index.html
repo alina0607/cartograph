@@ -93,6 +93,13 @@
       #legend .lg-row { display: flex; align-items: center; gap: 9px; white-space: nowrap; }
       #legend .lg-sw { width: 34px; text-align: center; font-weight: 700; letter-spacing: -1px; }
       #legend .lg-sep { height: 1px; margin: 4px 0; background: var(--glass-edge); }
+      /* a relation row highlights its edges; a click anywhere on the canvas clears it */
+      #legend .lg-pick { cursor: pointer; border-radius: 7px; margin: 0 -6px; padding: 1px 6px; }
+      #legend .lg-pick:hover { background: rgba(139, 92, 246, 0.1); }
+      #legend .lg-pick.active { background: rgba(139, 92, 246, 0.2); color: #3d3556; font-weight: 600; }
+      #app.hl g.edge { opacity: 0.12; transition: opacity 0.15s; }
+      #app.hl g.edge.on { opacity: 1; }
+      #app.hl g.edge.on path, #app.hl g.edge.on polygon { stroke-width: 3.4; }
 
       /* method detail popup */
       .cb-backdrop {

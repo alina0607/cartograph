@@ -95,11 +95,13 @@ export function renderScene(store: Store): string {
         : edgeGeom(src, dst, bend);
     const st = edgeStyle(rel);
     const dash = st.dash ? ` stroke-dasharray="${st.dash}"` : "";
-    edgeParts.push(
+    // One group per edge, tagged with its kind, so the legend can highlight a kind.
+    const parts = [
       `<path d="${geom.path}" fill="none" stroke="${st.color}" stroke-width="1.8"${dash}/>`,
-    );
-    if (st.markerEnd) edgeParts.push(decoration(st.markerEnd, geom.p1, geom.dirEnd, st.color));
-    if (st.markerStart) edgeParts.push(decoration(st.markerStart, geom.p0, geom.dirStart, st.color));
+    ];
+    if (st.markerEnd) parts.push(decoration(st.markerEnd, geom.p1, geom.dirEnd, st.color));
+    if (st.markerStart) parts.push(decoration(st.markerStart, geom.p0, geom.dirStart, st.color));
+    edgeParts.push(`<g class="edge" data-kind="${attr(rel.kind)}">${parts.join("")}</g>`);
     handleParts.push(
       `<circle class="eh" data-edge="${attr(key)}" cx="${round(geom.handle.x)}" cy="${round(
         geom.handle.y,

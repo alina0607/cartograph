@@ -31,6 +31,7 @@ let selfTemplate: string | undefined;
 
 const rerender = () => {
   if (store) app.innerHTML = renderScene(store);
+  applyHighlight();
 };
 
 function mount(seed: Seed, scope: string): void {
@@ -133,7 +134,10 @@ function updateLegend(seed: Seed): void {
   const rows = LEGEND_ORDER.filter((k) => present.has(k))
     .map((k) => {
       const e = LEGEND[k]!;
-      return `<div class="lg-row"><span class="lg-sw" style="color:${e.color}">${e.glyph}</span>${e.label}</div>`;
+      return (
+        `<div class="lg-row lg-pick" data-kind="${k}" title="highlight these arrows">` +
+        `<span class="lg-sw" style="color:${e.color}">${e.glyph}</span>${e.label}</div>`
+      );
     })
     .join("");
   // Which languages are on the board, so the stripe / badge colours are decoded.
@@ -155,9 +159,41 @@ function updateLegend(seed: Seed): void {
   const sections = [rows, originRows, langRows].filter(Boolean);
   legendEl.innerHTML = sections.join(`<div class="lg-sep"></div>`);
   legendEl.classList.toggle("on", sections.length > 0);
+  if (highlightKind && !present.has(highlightKind)) highlightKind = null;
+}
+
+// The relation kind whose edges are highlighted (picked in the legend), or null.
+let highlightKind: string | null = null;
+
+function applyHighlight(): void {
+  app.classList.toggle("hl", highlightKind !== null);
+  app.querySelectorAll<SVGGElement>("g.edge").forEach((g) => {
+    g.classList.toggle("on", g.dataset.kind === highlightKind);
+  });
+  legendEl.querySelectorAll<HTMLElement>(".lg-pick").forEach((row) => {
+    row.classList.toggle("active", row.dataset.kind === highlightKind);
+  });
 }
 
 async function boot(): Promise<void> {
+  legendEl.addEventListener("click", (ev) => {
+    const row = (ev.target as Element).closest<HTMLElement>(".lg-pick");
+    if (!row) return;
+    const kind = row.dataset.kind ?? null;
+    highlightKind = highlightKind === kind ? null : kind; // a second click turns it off
+    applyHighlight();
+  });
+  // Any press on the canvas clears the highlight (capture: before panning or dragging starts).
+  app.addEventListener(
+    "pointerdown",
+    () => {
+      if (highlightKind) {
+        highlightKind = null;
+        applyHighlight();
+      }
+    },
+    { capture: true },
+  );
   wireInteractions(app, () => store!, rerender, (nodeKey, methodName) => {
     const node = byKey.get(nodeKey);
     const method = node?.methods.find((m) => m.name === methodName);
