@@ -2,16 +2,17 @@
 // innerHTML swaps that re-render does. A press that moves past the slop is a drag (a class
 // box, a line's bend, a canvas item, a resize handle, or — on empty canvas — a pan); a press
 // that does not is a click (toggle a class, open a method popup, or select an item). The
-// wheel zooms about the cursor; double-click edits a note/group; Delete removes a selection.
+// wheel (or a two-finger trackpad swipe) pans; with Ctrl or Cmd held, or as a trackpad pinch
+// (which browsers report as a Ctrl-wheel), it zooms about the cursor. Double-click edits a
+// note/group; Delete removes a selection.
 
 import { dims } from "./geometry";
 import type { ItemKind, Rect } from "./model";
 import type { Store } from "./store";
 import { openEditor } from "./ui/editor";
+import { wheelPixels, zoomAbout } from "./view";
 
 const SLOP = 4;
-const MIN_ZOOM = 0.15;
-const MAX_ZOOM = 4;
 
 export type MethodClick = (nodeKey: string, methodName: string) => void;
 
@@ -186,13 +187,14 @@ export function wireInteractions(
       if (!store || !svg) return;
       ev.preventDefault();
       const v = store.view();
-      const rect = svg.getBoundingClientRect();
-      const sx = ev.clientX - rect.left;
-      const sy = ev.clientY - rect.top;
-      const wx = (sx - v.panX) / v.zoom;
-      const wy = (sy - v.panY) / v.zoom;
-      const zoom = clamp(v.zoom * (ev.deltaY < 0 ? 1.1 : 1 / 1.1), MIN_ZOOM, MAX_ZOOM);
-      store.setView({ panX: sx - wx * zoom, panY: sy - wy * zoom, zoom });
+      const dx = wheelPixels(ev.deltaX, ev.deltaMode);
+      const dy = wheelPixels(ev.deltaY, ev.deltaMode);
+      if (ev.ctrlKey || ev.metaKey) {
+        const rect = svg.getBoundingClientRect();
+        store.setView(zoomAbout(v, ev.clientX - rect.left, ev.clientY - rect.top, dy));
+      } else {
+        store.setView({ panX: v.panX - dx, panY: v.panY - dy, zoom: v.zoom });
+      }
       rerender();
     },
     { passive: false },
@@ -238,10 +240,6 @@ function commit(moving: boolean, start: DOMPoint, p: DOMPoint): boolean {
   if (Math.hypot(p.x - start.x, p.y - start.y) < SLOP) return false;
   document.body.style.cursor = "grabbing";
   return true;
-}
-
-function clamp(n: number, lo: number, hi: number): number {
-  return Math.min(hi, Math.max(lo, n));
 }
 
 function isSelected(store: Store, kind: ItemKind, id: string): boolean {

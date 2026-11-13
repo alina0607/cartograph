@@ -195,3 +195,104 @@ describe("a drawn board stays readable", () => {
     expect(d.w).toBeGreaterThan(longest * 5);
   });
 });
+
+describe("a board is laid out for a landscape screen", () => {
+  // Many unrelated pieces: twelve small hierarchies and eight loose classes. Packed into a
+  // fixed narrow column they would stack far below the window; packed for a screen they
+  // spread sideways first.
+  function scattered(): Seed {
+    const nodes: SeedNode[] = [];
+    const relations: SeedRelation[] = [];
+    for (let i = 0; i < 12; i++) {
+      nodes.push(node(`Base${i}`), node(`Sub${i}`));
+      relations.push(rel(`Sub${i}`, `Base${i}`, "inherits"));
+    }
+    for (let i = 0; i < 8; i++) nodes.push(node(`Loose${i}`));
+    return { version: 1, nodes, relations };
+  }
+
+  it("comes out wider than tall, near the target shape", () => {
+    const boxes = [...boxesOf(scattered()).values()];
+    const left = Math.min(...boxes.map((b) => b.cx - b.w / 2));
+    const right = Math.max(...boxes.map((b) => b.cx + b.w / 2));
+    const top = Math.min(...boxes.map((b) => b.cy - b.h / 2));
+    const bottom = Math.max(...boxes.map((b) => b.cy + b.h / 2));
+    const ratio = (right - left) / (bottom - top);
+    expect(ratio).toBeGreaterThan(1.2);
+    expect(ratio).toBeLessThan(3);
+  });
+
+  it("still places every class without overlapping another", () => {
+    const boxes = [...boxesOf(scattered()).values()];
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        expect(overlaps(boxes[i]!, boxes[j]!)).toBe(false);
+      }
+    }
+  });
+});
+
+it("puts a class with no relationship beside a tall hierarchy, not underneath it", () => {
+  const names = ["L0", "L1", "L2", "L3", "L4", "Alone"];
+  const seed: Seed = {
+    version: 1,
+    nodes: names.map((n) => node(n)),
+    relations: [0, 1, 2, 3].map((i) => rel(`L${i + 1}`, `L${i}`, "inherits")),
+  };
+  const boxes = boxesOf(seed);
+  const alone = boxes.get("m/Alone.py#Alone")!;
+  const bottom = Math.max(...names.slice(0, 5).map((n) => {
+    const b = boxes.get(`m/${n}.py#${n}`)!;
+    return b.cy + b.h / 2;
+  }));
+  expect(alone.cy - alone.h / 2).toBeLessThan(bottom);
+  const all = [...boxes.values()];
+  const width = Math.max(...all.map((x) => x.cx + x.w / 2)) - Math.min(...all.map((x) => x.cx - x.w / 2));
+  const height = Math.max(...all.map((x) => x.cy + x.h / 2)) - Math.min(...all.map((x) => x.cy - x.h / 2));
+  expect(width).toBeLessThan(height); // nothing else to put beside it: no empty width added
+});
+
+it("hidden function groups never move a class", () => {
+  // Enough classes to wrap onto several rows, and many functions: if the functions took part
+  // in choosing the width or the order, the classes would land somewhere else.
+  const solo = Array.from({ length: 8 }, (_, i) => `Solo${i}`);
+  const classes: Seed = {
+    version: 1,
+    nodes: ["A", "B", "C", ...solo].map((n) => node(n)),
+    relations: [rel("B", "A", "inherits"), rel("C", "A", "inherits")],
+  };
+  const fn = (name: string): SeedNode => ({ ...node(name, 0), kind: "function" });
+  const fns = Array.from({ length: 60 }, (_, i) => `f${i}`);
+  const withFunctions: Seed = {
+    version: 1,
+    nodes: [...classes.nodes, ...fns.map(fn)],
+    relations: [
+      ...classes.relations,
+      ...fns.filter((_, i) => i % 3 !== 0).map((f, i) => rel(fns[Math.floor(i / 2) * 3]!, f, "calls")),
+    ],
+  };
+  const before = boxesOf(classes);
+  const after = boxesOf(withFunctions);
+  for (const [key, box] of before) expect(after.get(key)).toEqual(box);
+});
+
+it("gives a deep hierarchy a landscape row, its neighbours beside it", () => {
+  // A ten-level chain is far taller than wide; the classes with no relationship should fill
+  // the row beside it rather than start a new row underneath.
+  const chain = Array.from({ length: 10 }, (_, i) => `D${i}`);
+  const solo = Array.from({ length: 6 }, (_, i) => `S${i}`);
+  const seed: Seed = {
+    version: 1,
+    nodes: [...chain, ...solo].map((n) => node(n, 6)),
+    relations: chain.slice(1).map((n, i) => rel(n, `D${i}`, "inherits")),
+  };
+  const boxes = boxesOf(seed);
+  const chainBottom = Math.max(...chain.map((n) => {
+    const b = boxes.get(`m/${n}.py#${n}`)!;
+    return b.cy + b.h / 2;
+  }));
+  for (const n of solo) {
+    const b = boxes.get(`m/${n}.py#${n}`)!;
+    expect(b.cy - b.h / 2).toBeLessThan(chainBottom);
+  }
+});

@@ -80,9 +80,12 @@ const cssFile = join(DIST, cssRef[1].replace(/^\//, ""));
 const { css, count } = await inlineCssUrls(await readFile(cssFile, "utf8"), dirname(cssFile));
 const js = safeForInlineScript(await readFile(join(DIST, jsRef[1].replace(/^\//, "")), "utf8"));
 
+// Replacer FUNCTIONS, not strings: in a replacement string `$&`, `$'` and `` $` `` are
+// patterns, and minified code is full of them (`$&&b` when a variable is named `$`). A string
+// replacement once spliced the matched <script src> tag into the middle of the bundle.
 let viewer = html
-  .replace(cssRef[0], `<style>\n${css}\n</style>`)
-  .replace(jsRef[0], `<script type="module">\n${js}\n</script>`);
+  .replace(cssRef[0], () => `<style>\n${css}\n</style>`)
+  .replace(jsRef[0], () => `<script type="module">\n${js}\n</script>`);
 
 // The slot `export html` fills. Its absence is a build error, not something to paper over: an
 // exported file without it would open as an empty canvas and look like a data-loss bug.

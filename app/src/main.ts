@@ -8,6 +8,7 @@ import { wireInteractions } from "./interactions";
 import { openMethodModal } from "./ui/modal";
 import { wireDocTips } from "./ui/doctip";
 import { escapeHtml } from "./docfmt";
+import { fitView } from "./view";
 
 // Size boxes to the text as this browser draws it: the monospace font differs between
 // machines, and an estimate leaves long lines spilling past their box.
@@ -45,19 +46,14 @@ function mount(seed: Seed, scope: string): void {
   updateLinesLabel();
   setStatus(nodeCounts(seed));
   rerender();
-  if (fresh) requestAnimationFrame(fitReadable);
+  if (fresh) requestAnimationFrame(fitToContent);
 }
 
 // Frame the whole drawing in the viewport (measured from what actually rendered, once the
-// container has a size). Only called for a fresh scan or a reset — a board the user has
-// already panned keeps its view.
-// Opening a board shows it at 100% or larger so the text stays readable; a board bigger than
-// the window starts at its top-left corner and is panned from there. Reset fits the whole board.
-function fitReadable(): void {
-  fitToContent(1);
-}
-
-function fitToContent(minZoom = 0.12): void {
+// container has a size), however small that makes it: the reader sees every box at once and
+// zooms into what interests them. Only called for a fresh scan or a reset — a board the user
+// has already panned keeps its view.
+function fitToContent(): void {
   if (!store) return;
   const rects = app.querySelectorAll<SVGRectElement>("#world .nd > rect");
   let minX = Infinity;
@@ -72,22 +68,12 @@ function fitToContent(minZoom = 0.12): void {
     maxX = Math.max(maxX, x + r.width.baseVal.value);
     maxY = Math.max(maxY, y + r.height.baseVal.value);
   });
-  const spanX = maxX - minX;
-  const spanY = maxY - minY;
-  const vw = app.clientWidth;
-  const vh = app.clientHeight;
-  if (!isFinite(minX) || vw < 50 || vh < 50 || spanX < 1 || spanY < 1) return;
-  const pad = 50;
-  const fit = Math.min((vw - 2 * pad) / spanX, (vh - 2 * pad) / spanY);
-  const zoom = Math.min(1, Math.max(minZoom, fit));
-  // Centre an axis that fits in the window; otherwise start at its top / left edge.
-  const place = (span: number, size: number, min: number): number =>
-    span * zoom <= size - 2 * pad ? (size - span * zoom) / 2 - min * zoom : pad - min * zoom;
-  store.setView({
-    panX: place(spanX, vw, minX),
-    panY: place(spanY, vh, minY),
-    zoom,
-  });
+  // Keep the strip under the legend panel clear, so no box opens hidden behind it.
+  const shown = legendEl.classList.contains("on") ? legendEl.getBoundingClientRect() : null;
+  const left = shown ? Math.max(0, shown.right - app.getBoundingClientRect().left) : 0;
+  const view = fitView({ minX, minY, maxX, maxY }, app.clientWidth, app.clientHeight, left);
+  if (!view) return;
+  store.setView(view);
   rerender();
 }
 
@@ -417,7 +403,7 @@ function mountDoc(doc: CodeboardDoc, origin: string): void {
   updateLegend(doc.seed);
   updateLinesLabel();
   rerender();
-  if (fresh) requestAnimationFrame(fitReadable);
+  if (fresh) requestAnimationFrame(fitToContent);
   setStatus(`${doc.seed.nodes.length} classes ${origin}`);
 }
 

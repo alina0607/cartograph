@@ -19,8 +19,12 @@ can reopen and keep as study notes.
 - **Six UML relationships, resolved from real code.** Composition is distinguished
   from aggregation and association by how a type is actually used (owned vs. held vs.
   referenced); transient constructions become dependency edges.
+- **Laid out for a screen.** The first layout spreads sideways into a landscape board,
+  and a board opens framed so every box is visible at once, however small, clear of the
+  legend; **reset** frames it again.
 - **Direct manipulation.** Draggable classes, editable connector curvature, collapse /
-  expand, pan and zoom — all persisted per project.
+  expand, pan (drag the canvas, scroll, or swipe with two fingers) and zoom (Ctrl or
+  Cmd + scroll, or pinch) — all persisted per project.
 - **Annotations from the source.** Rest the pointer on a method or a class name and its
   docstring appears beside the box, formatted (Google and NumPy sections, `code`,
   lists, examples). Click a method to read its source, coloured like PyCharm.

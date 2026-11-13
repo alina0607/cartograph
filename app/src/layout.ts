@@ -6,9 +6,15 @@
 // the layers are well-defined, order within each layer to minimise crossings (barycenter
 // sweeps over dummy nodes standing in for edges that span several layers), then place with
 // parents centred over their children — and the finished components are packed side by side
-// so unrelated subgraphs stay close instead of drifting apart. Cross-language (`contract`)
-// links impose no vertical order; nodes with no directed relationship are gathered into a
-// grid underneath. Fully deterministic. The user rearranges from here; their positions win.
+// so unrelated subgraphs stay close instead of drifting apart. The packing width is chosen so
+// the whole board comes out landscape (about ASPECT times wider than tall), the shape of a
+// computer screen, rather than a narrow column the reader has to scroll down. Cross-language
+// (`contract`) links impose no vertical order; a node with no relationship at all is packed
+// like a one-node component, so it fills the space beside the hierarchies instead of always
+// going underneath them. Groups made only of functions (hidden until the reader asks for
+// them) are packed last, so they never take the space beside the classes and leave a hole
+// on the default board. Fully deterministic. The user rearranges from here; their positions
+// win.
 
 import { dims } from "./geometry";
 import type { Point, Seed } from "./model";
@@ -19,6 +25,7 @@ const VIRT_W = 22; // lane width reserved for an edge passing through a layer
 const MARGIN = 60;
 const COMPONENT_GAP = 84; // clearance between packed components
 const LOOSE_GAP = 26; // spacing in the unrelated-nodes grid
+const ASPECT = 16 / 10; // target width : height of the packed board (a landscape screen)
 
 // For a directed relationship, which endpoint belongs on the upper layer (or null for none).
 function upperLower(kind: string, s: number, d: number): [number, number] | null {
@@ -77,32 +84,17 @@ export function initialPositions(seed: Seed): Record<string, Point> {
   const compRedges: Array<Array<[number, number]>> = Array.from({ length: comp.count }, () => []);
   for (const e of redges) compRedges[comp.id[e[0]]!]!.push(e);
 
-  // Lay out each multi-node component; single, unrelated nodes go to a grid at the end.
-  interface Placed {
-    keys: string[];
-    xy: Point[]; // top-left, normalised so the component starts at (0,0)
-    w: number;
-    h: number;
-  }
-  const placed: Placed[] = [];
-  const loose: number[] = [];
-  for (let c = 0; c < comp.count; c++) {
-    const memb = members[c]!;
-    if (memb.length === 1) {
-      loose.push(memb[0]!);
-    } else {
-      placed.push(layeredComponent(memb, compRedges[c]!, order, w, h));
-    }
-  }
+  const placed = members.map((memb, c) => packItem(memb, compRedges[c]!, order, w, h));
 
   const pos: Record<string, Point> = {};
-  const target = Math.max(700, ...placed.map((p) => p.w));
-  const bottom = shelfPack(placed, target, COMPONENT_GAP, (p, x, y) => {
+  placed.sort(packingOrder);
+  // The width is set by what is visible by default (the classes).
+  const shown = placed.filter((p) => !p.functionsOnly);
+  shelfPack(placed, packingWidth(shown.length ? shown : placed), (p, x, y) => {
     for (let i = 0; i < p.keys.length; i++) {
       pos[p.keys[i]!] = { x: p.xy[i]!.x + x, y: p.xy[i]!.y + y };
     }
   });
-  packLoose(loose, order, w, h, target, bottom, pos);
 
   // Normalise to a top-left margin.
   let ox = Infinity;
@@ -336,56 +328,81 @@ function longestPathRanks(dag: Array<[number, number]>, n: number): Int32Array {
   return rank;
 }
 
-interface Sized {
+// One packed item: a laid-out component, or a single class with no relationship.
+interface Placed {
+  keys: string[];
+  xy: Point[]; // top-left, normalised so the item starts at (0,0)
   w: number;
   h: number;
+  gap: number; // clearance to its right and below
+  functionsOnly: boolean; // hidden on the default board
 }
 
-// Left-to-right, top-to-bottom shelf packing; reports each item's slot via `place` and
-// returns the y the next region can start at.
-function shelfPack<T extends Sized>(
-  items: T[],
-  target: number,
-  gap: number,
-  place: (item: T, x: number, y: number) => void,
-): number {
-  let x = 0;
-  let y = 0;
-  let rowH = 0;
-  for (const it of items) {
-    if (x > 0 && x + it.w > target) {
-      y += rowH + gap;
-      x = 0;
-      rowH = 0;
-    }
-    place(it, x, y);
-    x += it.w + gap;
-    rowH = Math.max(rowH, it.h);
-  }
-  return items.length ? y + rowH + gap : 0;
-}
-
-// Gather unrelated single nodes into a grid below the hierarchy.
-function packLoose(
-  loose: number[],
+// One component as an item to pack: a single class as it is, a larger component laid out
+// in layers first.
+function packItem(
+  memb: number[],
+  edges: Array<[number, number]>,
   order: Seed["nodes"],
   w: Float64Array,
   h: Float64Array,
+): Placed {
+  const functionsOnly = memb.every((i) => order[i]!.kind === "function");
+  if (memb.length === 1) {
+    const i = memb[0]!;
+    const xy = [{ x: 0, y: 0 }];
+    return { keys: [order[i]!.key], xy, w: w[i]!, h: h[i]!, gap: LOOSE_GAP, functionsOnly };
+  }
+  return { ...layeredComponent(memb, edges, order, w, h), gap: COMPONENT_GAP, functionsOnly };
+}
+
+// Classes before function-only groups; then tallest first, so each shelf holds boxes of
+// similar height and wastes less. Lone classes are short, so they fill the space beside the
+// hierarchies. The key breaks ties, so the order is deterministic.
+function packingOrder(a: Placed, b: Placed): number {
+  return (
+    Number(a.functionsOnly) - Number(b.functionsOnly) ||
+    b.h - a.h ||
+    a.keys[0]!.localeCompare(b.keys[0]!)
+  );
+}
+
+// Shelf width for a landscape board: if everything were packed without waste into a W x H
+// rectangle with W = ASPECT * H, then W = sqrt(area * ASPECT). A tall hierarchy sets the
+// first row's height anyway, so the row may also grow to ASPECT times that height, letting
+// the rest sit beside it. (A width larger than all the items side by side does no harm: the
+// shelf simply ends.) Never narrower than the widest component (it cannot be split) or than
+// 700 (a tiny board stays one comfortable row).
+function packingWidth(placed: Placed[]): number {
+  let area = 0;
+  let tallest = 0;
+  for (const p of placed) {
+    area += (p.w + p.gap) * (p.h + p.gap);
+    tallest = Math.max(tallest, p.h);
+  }
+  return Math.max(700, ...placed.map((p) => p.w), Math.sqrt(area * ASPECT), ASPECT * tallest);
+}
+
+// Left-to-right, top-to-bottom shelf packing; reports each item's slot via `place`.
+function shelfPack(
+  items: Placed[],
   target: number,
-  startY: number,
-  pos: Record<string, Point>,
+  place: (item: Placed, x: number, y: number) => void,
 ): void {
   let x = 0;
-  let y = startY;
+  let y = 0;
   let rowH = 0;
-  for (const i of loose) {
-    if (x > 0 && x + w[i]! > target) {
-      y += rowH + LOOSE_GAP;
+  let rowGap = 0;
+  for (const it of items) {
+    if (x > 0 && x + it.w > target) {
+      y += rowH + rowGap;
       x = 0;
       rowH = 0;
+      rowGap = 0;
     }
-    pos[order[i]!.key] = { x, y };
-    x += w[i]! + LOOSE_GAP;
-    rowH = Math.max(rowH, h[i]!);
+    place(it, x, y);
+    x += it.w + it.gap;
+    rowH = Math.max(rowH, it.h);
+    rowGap = Math.max(rowGap, it.gap);
   }
 }

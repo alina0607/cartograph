@@ -29,6 +29,15 @@ def test_template_has_exactly_one_empty_slot() -> None:
     assert SLOT.findall(viewer_template()) == ["null"]
 
 
+def test_template_inlines_the_app_and_nothing_else() -> None:
+    # One inlined module script and no reference to the build's asset files. A string
+    # replacement once spliced the `<script src>` tag into the middle of the bundle (`$&` is a
+    # pattern in JavaScript replacement strings), so the page showed its code as text.
+    html = viewer_template()
+    assert html.count('<script type="module">') == 1
+    assert "assets/index-" not in html
+
+
 def test_export_embeds_the_document_the_app_loads() -> None:
     doc = _embedded(export_html(SEED, "myproj"))
     assert doc == {"version": 1, "scope": "myproj", "seed": SEED, "overlay": empty_overlay()}
