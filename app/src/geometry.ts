@@ -2,11 +2,28 @@
 
 import type { Point, SeedNode } from "./model";
 
-const CHAR_W = 6.9; // width of one monospace char at our font size
-const LINE_H = 16;
-const TITLE_H = 24;
-const PAD = 8;
-const MIN_W = 96;
+// Font sizes (px) of the text in a box. render.ts draws with these; dims() sizes the box to them.
+export const FONT = { body: 14, title: 15, stereotype: 12, hint: 13, fn: 14 } as const;
+export const MONO_FONT = "ui-monospace, SFMono-Regular, Menlo, monospace";
+const LINE_H = 19;
+const TITLE_H = 27;
+const PAD = 9;
+const MIN_W = 110;
+const CHEVRON = 14; // room on each side of a title for the collapse chevron
+
+// Width in px of one line of box text. The browser installs a canvas measurer at startup
+// (setTextMeasurer), so boxes fit the font the viewer actually has; tests and other non-DOM
+// callers use this estimate (a monospace glyph is about 0.6 em wide).
+type TextMeasurer = (text: string, px: number, bold: boolean) => number;
+let measureText: TextMeasurer = (text, px) => text.length * px * 0.6;
+
+export function setTextMeasurer(measure: TextMeasurer): void {
+  measureText = measure;
+}
+
+function textW(text: string, px: number, bold = false): number {
+  return text ? Math.ceil(measureText(text, px, bold)) : 0;
+}
 
 export interface MethodLine {
   name: string; // the raw method name, used to open its detail popup
@@ -66,18 +83,21 @@ export function dims(node: SeedNode, collapsed = false): BoxDims {
   if (node.kind === "function") {
     // A function is a compact single pill: name only, no compartments.
     const label = `${node.name}()`;
-    const w = Math.max(MIN_W, Math.round(label.length * CHAR_W) + PAD * 2);
+    const w = Math.max(MIN_W, textW(label, FONT.fn) + PAD * 2);
     return { ...c, title: label, w, h: TITLE_H + PAD, collapsed: false, hint };
   }
   const stereoH = c.stereotype ? LINE_H : 0;
+  const header = Math.max(
+    textW(c.stereotype, FONT.stereotype),
+    textW(c.title, FONT.title, true) + CHEVRON * 2,
+  );
   if (collapsed) {
-    const longest = [c.stereotype, c.title, hint].reduce((m, s) => Math.max(m, s.length), 0);
-    const w = Math.max(MIN_W, Math.round(longest * CHAR_W) + PAD * 2);
+    const w = Math.max(MIN_W, Math.max(header, textW(hint, FONT.hint)) + PAD * 2);
     return { ...c, w, h: stereoH + TITLE_H + PAD + LINE_H + PAD, collapsed, hint };
   }
-  const lines = [c.stereotype, c.title, ...c.attrs, ...c.methods.map((m) => m.label)].filter(Boolean);
-  const longest = lines.reduce((m, s) => Math.max(m, s.length), 0);
-  const w = Math.max(MIN_W, Math.round(longest * CHAR_W) + PAD * 2);
+  const body = [...c.attrs, ...c.methods.map((m) => m.label)];
+  const longest = body.reduce((m, s) => Math.max(m, textW(s, FONT.body)), header);
+  const w = Math.max(MIN_W, longest + PAD * 2);
   const h =
     stereoH + TITLE_H + PAD + c.attrs.length * LINE_H + PAD + c.methods.length * LINE_H + PAD;
   return { ...c, w, h, collapsed, hint };
@@ -87,7 +107,7 @@ function plural(n: number): string {
   return n === 1 ? "" : "s";
 }
 
-export const metrics = { CHAR_W, LINE_H, TITLE_H, PAD };
+export const metrics = { LINE_H, TITLE_H, PAD };
 
 export interface Box {
   cx: number;

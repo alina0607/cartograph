@@ -6,7 +6,9 @@ import {
   borderPoint,
   dims,
   edgeGeom,
+  FONT,
   metrics,
+  MONO_FONT,
   polylineGeom,
   type Box,
 } from "./geometry";
@@ -119,7 +121,7 @@ export function renderScene(store: Store): string {
 
   return (
     `<svg id="scene" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" ` +
-    `font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">` +
+    `font-family="${MONO_FONT}" font-size="${FONT.body}">` +
     defs() +
     `<g id="world" transform="translate(${round(view.panX)} ${round(view.panY)}) ` +
     `scale(${round(view.zoom)})">` +
@@ -146,7 +148,7 @@ function renderBox(node: SeedNode, box: Box, collapsed: boolean): string {
       `<rect x="${round(x0)}" y="${round(y0)}" width="${d.w}" height="${round(d.h)}" rx="9" ` +
       `fill="${kind.fill}" stroke="${kind.stroke}" stroke-width="1.1" filter="url(#cardshadow)"/>` +
       langStripe(x0, y0, d.h, lang) +
-      centerText(box.cx, y0 + 17, d.title, kind.ink, false, 12) +
+      centerText(box.cx, y0 + 23, d.title, kind.ink, false, FONT.fn) +
       `</g>`
     );
   }
@@ -160,25 +162,25 @@ function renderBox(node: SeedNode, box: Box, collapsed: boolean): string {
   ];
   let cy = y0;
   if (d.stereotype) {
-    parts.push(centerText(box.cx, cy + 12, d.stereotype, kind.ink2, false, 10.5));
+    parts.push(centerText(box.cx, cy + 14, d.stereotype, kind.ink2, false, FONT.stereotype));
     cy += LINE_H;
   }
   // Chevron signals (and, via a header click, toggles) collapse.
-  parts.push(leftText(x0 + 7, cy + 16, collapsed ? "▸" : "▾", kind.ink2));
-  parts.push(centerText(box.cx, cy + 16, d.title, kind.ink, d.italic, 12.5, true));
+  parts.push(leftText(x0 + 7, cy + 19, collapsed ? "▸" : "▾", kind.ink2));
+  parts.push(centerText(box.cx, cy + 19, d.title, kind.ink, d.italic, FONT.title, true));
   cy += TITLE_H;
 
   if (collapsed) {
     parts.push(sep(x0, cy, d.w, kind.stroke));
     cy += PAD;
-    parts.push(centerText(box.cx, cy + 11, d.hint, kind.ink2, false, 11));
+    parts.push(centerText(box.cx, cy + 14, d.hint, kind.ink2, false, FONT.hint));
     return `<g class="nd" data-key="${attr(node.key)}">${parts.join("")}</g>`;
   }
 
   parts.push(sep(x0, cy, d.w, kind.stroke));
   cy += PAD;
   for (const a of d.attrs) {
-    parts.push(leftText(x0 + PAD, cy + 11, a, kind.ink2));
+    parts.push(leftText(x0 + PAD, cy + 14, a, kind.ink2));
     cy += LINE_H;
   }
   parts.push(sep(x0, cy, d.w, kind.stroke));
@@ -189,7 +191,7 @@ function renderBox(node: SeedNode, box: Box, collapsed: boolean): string {
       `<g class="mrow" data-key="${attr(node.key)}" data-method="${attr(m.name)}">` +
         `<rect x="${round(x0 + 2)}" y="${round(cy)}" width="${round(d.w - 4)}" height="${LINE_H}" ` +
         `rx="3" fill="transparent"/>` +
-        leftText(x0 + PAD, cy + 11, m.label, kind.ink2) +
+        leftText(x0 + PAD, cy + 14, m.label, kind.ink2) +
         `</g>`,
     );
     cy += LINE_H;

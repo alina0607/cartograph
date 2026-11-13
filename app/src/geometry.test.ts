@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { borderPoint, edgeGeom, midpoint, polylineGeom, type Box } from "./geometry";
+import {
+  borderPoint,
+  dims,
+  edgeGeom,
+  FONT,
+  midpoint,
+  polylineGeom,
+  setTextMeasurer,
+  type Box,
+} from "./geometry";
+import type { SeedNode } from "./model";
 
 describe("borderPoint", () => {
   const box: Box = { cx: 0, cy: 0, w: 100, h: 60 };
@@ -60,5 +70,34 @@ describe("polylineGeom", () => {
     const d = polylineGeom(pts, { x: 200, y: 160 }).path;
     expect((d.match(/Q /g) ?? []).length).toBe(pts.length - 2);
     expect(d.startsWith("M 100 100")).toBe(true);
+  });
+});
+
+describe("box width follows the measured text", () => {
+  const cls = (attr: string): SeedNode =>
+    ({
+      key: "m.py#C",
+      name: "C",
+      module: "m.py",
+      kind: "class",
+      attributes: [[attr, "int"]],
+      methods: [],
+      doc: "",
+      lang: "python",
+    }) as unknown as SeedNode;
+
+  it("grows a box when the browser's font is wider than the estimate", () => {
+    const n = cls("a_rather_long_attribute_name");
+    const estimated = dims(n).w;
+    setTextMeasurer((text, px) => text.length * px * 0.75); // a wider font
+    try {
+      const measured = dims(n).w;
+      expect(measured).toBeGreaterThan(estimated);
+      // the longest line, drawn at the body size, fits between the paddings
+      const line = `+ a_rather_long_attribute_name: int`;
+      expect(measured).toBeGreaterThanOrEqual(Math.ceil(line.length * FONT.body * 0.75));
+    } finally {
+      setTextMeasurer((text, px) => text.length * px * 0.6);
+    }
   });
 });
