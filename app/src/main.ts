@@ -1,5 +1,5 @@
 import "@fontsource-variable/inter";
-import { isOutside, type CodeboardDoc, type Seed, type SeedNode } from "./model";
+import { isOutside, type CodeboardDoc, type Overlay, type Seed, type SeedNode } from "./model";
 import { MONO_FONT, setTextMeasurer } from "./geometry";
 import { Store } from "./store";
 import { KIND_LEGEND, kindSwatch, LANG_STYLE, renderScene } from "./render";
@@ -33,6 +33,8 @@ let byKey = new Map<string, SeedNode>();
 // An exported file IS the viewer template, so it can re-export itself after a rearrange with no
 // server and no network. Captured before the first render, while the DOM is still the empty shell.
 let selfTemplate: string | undefined;
+// The layout an exported page carries; reset returns to it instead of the automatic layout.
+let fileOverlay: Overlay | null = null;
 
 const rerender = () => {
   if (store) app.innerHTML = renderScene(store);
@@ -198,7 +200,8 @@ async function boot(): Promise<void> {
 
   document.getElementById("reset")!.addEventListener("click", () => {
     if (store) {
-      store.reset();
+      store.reset(fileOverlay ?? undefined);
+      if (fileOverlay) setStatus(`${store.seed.nodes.length} classes from this file`);
       rerender();
       requestAnimationFrame(fitToContent);
     }
@@ -274,7 +277,8 @@ async function boot(): Promise<void> {
   if (inlined) {
     document.body.classList.add("standalone");
     selfTemplate = document.documentElement.outerHTML; // still pristine: nothing rendered yet
-    mountDoc(inlined, "from this file");
+    fileOverlay = inlined.overlay;
+    mountDoc(inlined, "from this file", true);
     return;
   }
 
@@ -368,10 +372,16 @@ function saveDoc(): void {
 // The one place a saved document becomes the live board. `load` (a .json) and an exported .html
 // (its inlined copy) both arrive here, so the two cannot restore a layout differently — which is
 // the entire promise of the export.
-function mountDoc(doc: CodeboardDoc, origin: string): void {
+//
+// `keepEdits` is for an exported page: it opens with the layout it carries the first time, but after
+// the reader has moved things, what they arranged (saved in this browser) is what they get back on
+// the next visit. Without it every reload threw their work away. A loaded .json is an explicit
+// request for that file's layout, so it always wins.
+function mountDoc(doc: CodeboardDoc, origin: string, keepEdits = false): void {
   if (!doc.seed || !doc.overlay) throw new Error("not a cartograph file");
   store = new Store(doc.seed, doc.scope || "imported");
-  store.setOverlay(doc.overlay);
+  const kept = keepEdits && store.hasStoredLayout();
+  if (!kept) store.setOverlay(doc.overlay);
   // A saved view is the layout and must be restored untouched. Its ABSENCE is the case that bites:
   // a board exported before the user ever panned has no view to restore, and without a fit it
   // opens wherever the auto-layout happened to land — off-screen often enough to read as empty.
@@ -382,7 +392,10 @@ function mountDoc(doc: CodeboardDoc, origin: string): void {
   updateLinesLabel();
   rerender();
   if (fresh) requestAnimationFrame(fitToContent);
-  setStatus(`${doc.seed.nodes.length} classes ${origin}`);
+  setStatus(
+    `${doc.seed.nodes.length} classes ${origin}` +
+      (kept ? " · your layout from this browser (reset returns to the file's)" : ""),
+  );
 }
 
 async function loadDoc(file: File): Promise<void> {

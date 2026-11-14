@@ -34,13 +34,21 @@ export class Store {
   private base: Record<string, Point>; // layout fallback for un-moved boxes
   private saveTimer: number | null = null;
   private sel: Selection | null = null; // transient (not persisted)
+  private readonly stored: boolean; // this browser already held a layout for the scope
 
   constructor(seed: Seed, scope = "default") {
     this.seed = seed;
     this.scope = scope;
     this.key = STORAGE_PREFIX + scope;
-    this.overlay = loadOverlay(this.key);
+    const saved = loadOverlay(this.key);
+    this.stored = saved !== null;
+    this.overlay = saved ?? emptyOverlay();
     this.base = this.layoutForVisible();
+  }
+
+  // Whether the layout came from this browser's storage: the user arranged this board before.
+  hasStoredLayout(): boolean {
+    return this.stored;
   }
 
   // Layout is computed over the nodes that will actually be DRAWN. Ranking the hidden ones too
@@ -252,14 +260,17 @@ export class Store {
     return { version: 1, scope: this.scope, seed: this.seed, overlay: this.overlay };
   }
 
+  // A copy: the caller's overlay (an exported file's own layout) must stay as it was, so that
+  // reset can return to it after the user has moved things.
   setOverlay(overlay: Overlay): void {
-    this.overlay = normalize(overlay);
+    this.overlay = normalize(structuredClone(overlay));
     this.base = initialPositions(this.seed);
     this.save();
   }
 
-  reset(): void {
-    this.overlay = emptyOverlay();
+  // Back to `to` (an exported file's layout), or to the automatic layout when there is none.
+  reset(to?: Overlay): void {
+    this.overlay = to ? normalize(structuredClone(to)) : emptyOverlay();
     this.sel = null;
     this.save();
   }
@@ -278,13 +289,14 @@ export class Store {
   }
 }
 
-function loadOverlay(key: string): Overlay {
+// The layout saved in this browser for `key`, or null when there is none (or storage is off).
+function loadOverlay(key: string): Overlay | null {
   try {
     const raw = localStorage.getItem(key);
-    if (!raw) return emptyOverlay();
+    if (!raw) return null;
     return normalize(JSON.parse(raw) as Partial<Overlay>);
   } catch {
-    return emptyOverlay();
+    return null;
   }
 }
 
