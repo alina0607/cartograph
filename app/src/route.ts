@@ -35,6 +35,7 @@ const CHANNEL_CLEAR = 24; // horizontal clearance before two runs may share a ru
 const BOX_CLEAR = 4; // clearance required when testing a run against a box
 const CHANNEL_EDGE = 4; // keep a channel off the boxes bounding its gutter
 const MIN_GUTTER = 12; // treat rows this close as still having a usable band
+const RUN_CLEAR = 12; // a run keeps this far above or below the boxes it passes
 
 export interface Route {
   points: Point[]; // orthogonal polyline from the source border to the destination border
@@ -50,6 +51,11 @@ interface Row {
 interface Gutter {
   lo: number;
   hi: number;
+  // Centres of the rows either side. Heights inside the gutter are searched between these, not
+  // between lo and hi: lo and hi are the extremes of whole rows, so one box nudged anywhere in a
+  // row would move every run in the gutter. Row centres only move when the row's first box does.
+  from: number;
+  to: number;
 }
 
 // One horizontal run, before its height is known. `group` is what may share a height: every
@@ -147,7 +153,7 @@ function routeComponent(
   for (const b of all) rowIdx.set(b, nearestRow(rows, b));
   const gutters: Gutter[] = rows.slice(0, -1).map((r, i) => {
     const hi = rows[i + 1]!.top;
-    return { lo: r.bottom, hi: Math.max(hi, r.bottom + MIN_GUTTER) };
+    return { lo: r.bottom, hi: Math.max(hi, r.bottom + MIN_GUTTER), from: r.cy, to: rows[i + 1]!.cy };
   });
 
   // Which end of a one-gutter connector is the interesting one. A class with five children should
@@ -259,14 +265,18 @@ function routeComponent(
 // welds the two rows into one — after which the row has no gutter of its own and a connector
 // leaving it starts by crossing its own neighbours.
 function buildRows(all: Box[]): Row[] {
-  const rows: Row[] = [];
+  const rows: Array<Row & { h: number }> = [];
   for (const b of [...all].sort((x, y) => x.cy - y.cy)) {
     const cur = rows[rows.length - 1];
-    if (cur && Math.abs(b.cy - cur.cy) <= ROW_TOLERANCE) {
+    // A box still belongs to a row while its centre lies within half the height of the shorter of
+    // it and the row's first box: a hand-moved box stays in its row until it has clearly left, and
+    // a tall box still cannot weld two rows, because the shorter height decides.
+    const reach = cur ? Math.max(ROW_TOLERANCE, Math.min(b.h, cur.h) / 2) : 0;
+    if (cur && Math.abs(b.cy - cur.cy) <= reach) {
       cur.top = Math.min(cur.top, b.cy - b.h / 2);
       cur.bottom = Math.max(cur.bottom, b.cy + b.h / 2);
     } else {
-      rows.push({ cy: b.cy, top: b.cy - b.h / 2, bottom: b.cy + b.h / 2 });
+      rows.push({ cy: b.cy, top: b.cy - b.h / 2, bottom: b.cy + b.h / 2, h: b.h });
     }
   }
   return rows;
@@ -291,7 +301,7 @@ function nearestRow(rows: Row[], b: Box): number {
 // step sideways so two corridors never share a line.
 function freeColumn(
   all: Box[],
-  band: Gutter,
+  band: Pick<Gutter, "lo" | "hi">,
   rowIndex: number,
   desired: number,
   use: Map<string, number>,
@@ -360,6 +370,16 @@ function assignChannels(plans: Plan[], all: Box[]): Map<string, number> {
         x1 > b.cx - b.w / 2 - BOX_CLEAR &&
         x0 < b.cx + b.w / 2 + BOX_CLEAR,
     );
+  // A height keeps RUN_CLEAR from every box it passes over or under: only the boxes along the run
+  // count, so a box elsewhere in the row cannot push it.
+  const roomy = (y: number, x0: number, x1: number): boolean =>
+    !all.some(
+      (b) =>
+        y > b.cy - b.h / 2 - RUN_CLEAR &&
+        y < b.cy + b.h / 2 + RUN_CLEAR &&
+        x1 > b.cx - b.w / 2 - BOX_CLEAR &&
+        x0 < b.cx + b.w / 2 + BOX_CLEAR,
+    );
 
   const placed: Array<{ y: number; x0: number; x1: number }> = [];
   const free = (y: number, x0: number, x1: number): boolean =>
@@ -371,8 +391,12 @@ function assignChannels(plans: Plan[], all: Box[]): Map<string, number> {
 
   const heights = new Map<string, number>();
   for (const it of [...items.values()].sort((a, b) => a.x0 - b.x0)) {
-    const rungs = ladder(it.gutter);
-    let y = rungs.find((r) => clear(r, it.x0, it.x1) && free(r, it.x0, it.x1));
+    // First choice: a grid height with room above and below along the run, so only the boxes the
+    // run passes can move it. A gutter too tight for that falls back to heights spread inside the
+    // gap between the rows, which always lie outside the classes.
+    let y = ladder(it.gutter).find((r) => roomy(r, it.x0, it.x1) && free(r, it.x0, it.x1));
+    const rungs = spread(it.gutter);
+    y ??= rungs.find((r) => clear(r, it.x0, it.x1) && free(r, it.x0, it.x1));
     if (y === undefined) {
       // Every rung clear of the classes is already taken along this span. Sharing one is the lesser
       // evil: a line drawn over another can still be traced, one drawn through a class cannot.
@@ -384,7 +408,18 @@ function assignChannels(plans: Plan[], all: Box[]): Map<string, number> {
   return heights;
 }
 
+// Candidate heights, top first, on one grid for the whole drawing (multiples of CHANNEL_SPACING),
+// so a height never moves because the band around it changed size: it is either still a candidate
+// or it is not.
 function ladder(g: Gutter): number[] {
+  const first = Math.ceil(g.from / CHANNEL_SPACING) * CHANNEL_SPACING;
+  const out: number[] = [];
+  for (let y = first; y < g.to; y += CHANNEL_SPACING) out.push(y);
+  return out;
+}
+
+// Heights spread evenly inside the gap between two rows: the fallback when no grid height has room.
+function spread(g: Gutter): number[] {
   const usable = g.hi - g.lo - CHANNEL_EDGE * 2;
   const n = Math.max(1, Math.floor(usable / CHANNEL_SPACING));
   return Array.from({ length: n }, (_, i) => g.lo + ((g.hi - g.lo) * (i + 1)) / (n + 1));

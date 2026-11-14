@@ -70,4 +70,37 @@ describe("routeEdges", () => {
     const ys = rels.map((r) => runYs(routes.get(key(r))!)[0]);
     expect(new Set(ys).size).toBe(1);
   });
+
+  it("keeps connectors where they were when an unrelated class in the row moves", () => {
+    // E is the deepest class of the top row, so it alone decides where that row ends. Nudging it
+    // used to move every run in the gutter below, including A>B and C>D, which never pass it.
+    // F>D ties E into the same drawing as A..D: rows are worked out per connected group.
+    const rels = [rel("A", "B"), rel("C", "D"), rel("E", "F"), rel("F", "D")];
+    const boxes = (eDown: number) => ({
+      A: box(0, 0),
+      C: box(200, 0),
+      E: box(900, eDown, 100, 80),
+      B: box(100, 300),
+      D: box(300, 300),
+      F: box(900, 300),
+    });
+    const before = run(boxes(0), rels);
+    // E may drift up to half the shorter class (A and C, 40px tall) and stay in the row.
+    for (const dy of [8, 18]) {
+      const after = run(boxes(dy), rels);
+      expect(after.get("A>B")!.points).toEqual(before.get("A>B")!.points);
+      expect(after.get("C>D")!.points).toEqual(before.get("C>D")!.points);
+    }
+  });
+
+  it("keeps a class nudged off-centre in its row, so the drawing does not grow a row", () => {
+    // 30px is past the old 12px tolerance but well inside the 80px class: still the same row, so
+    // A>B crosses one gutter, not two.
+    const rels = [rel("A", "B"), rel("E", "F"), rel("F", "B")];
+    const routes = run(
+      { A: box(0, 0, 100, 80), E: box(600, 30, 100, 80), B: box(100, 300), F: box(600, 300) },
+      rels,
+    );
+    expect(runYs(routes.get("A>B")!)).toHaveLength(1);
+  });
 });
