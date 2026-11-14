@@ -9,7 +9,7 @@ import {
   setTextMeasurer,
   type Box,
 } from "./geometry";
-import type { SeedNode } from "./model";
+import type { Point, SeedNode } from "./model";
 
 describe("borderPoint", () => {
   const box: Box = { cx: 0, cy: 0, w: 100, h: 60 };
@@ -33,18 +33,59 @@ describe("edgeGeom", () => {
   it("the curve passes through the dragged handle", () => {
     const bend: [number, number] = [30, -80];
     const g = edgeGeom(src, dst, bend);
-    // B(0.5) of M p0 Q ctrl p1 must equal the handle M — the bend is grabbable on-curve.
-    const m = /M ([\d.-]+) ([\d.-]+) Q ([\d.-]+) ([\d.-]+) ([\d.-]+) ([\d.-]+)/.exec(g.path)!;
-    const [p0x, p0y, cx, cy, p1x, p1y] = m.slice(1).map(Number) as [
-      number, number, number, number, number, number,
-    ];
-    const bx = 0.25 * p0x + 0.5 * cx + 0.25 * p1x;
-    const by = 0.25 * p0y + 0.5 * cy + 0.25 * p1y;
-    expect(bx).toBeCloseTo(g.handle.x, 1);
-    expect(by).toBeCloseTo(g.handle.y, 1);
     expect(g.handle).toEqual({ x: 200 + 30, y: 0 - 80 });
+    // The bend is grabbable on-curve: some point of the drawn curve is the handle.
+    const near = Math.min(...sampleCurve(g.path).map((p) => Math.hypot(p.x - g.handle.x, p.y - g.handle.y)));
+    expect(near).toBeLessThan(1);
+  });
+
+  it("keeps both ends on the borders with the markers outside the boxes, however they are dragged", () => {
+    // Boxes far apart, close, diagonal, stacked; bends small, large, and on either side.
+    const offsets = [
+      [400, 0], [160, 0], [0, 140], [150, 110], [-170, 40], [60, -120],
+    ];
+    const bends = [
+      [0, 0], [30, -80], [0, 200], [-220, 0], [120, 120], [0, -60], [300, -40],
+    ];
+    const marker = 12; // length of the arrowhead drawn back along the curve
+    let checked = 0;
+    for (const [ox, oy] of offsets) {
+      const d: Box = { cx: ox!, cy: oy!, w: 100, h: 60 };
+      for (const [bx, by] of bends) {
+        const g = edgeGeom(src, d, [bx!, by!]);
+        expect(onBorder(src, g.p0)).toBe(true);
+        expect(onBorder(d, g.p1)).toBe(true);
+        const arrowBase = { x: g.p1.x - g.dirEnd.x * marker, y: g.p1.y - g.dirEnd.y * marker };
+        const ownerBack = { x: g.p0.x + g.dirStart.x * marker, y: g.p0.y + g.dirStart.y * marker };
+        expect(strictlyInside(d, arrowBase)).toBe(false);
+        expect(strictlyInside(src, ownerBack)).toBe(false);
+        checked++;
+      }
+    }
+    expect(checked).toBe(42);
   });
 });
+
+function sampleCurve(path: string): Point[] {
+  const m = /M ([\d.-]+) ([\d.-]+) Q ([\d.-]+) ([\d.-]+) ([\d.-]+) ([\d.-]+)/.exec(path)!;
+  const [p0x, p0y, cx, cy, p1x, p1y] = m.slice(1).map(Number) as [
+    number, number, number, number, number, number,
+  ];
+  return Array.from({ length: 201 }, (_, i) => {
+    const t = i / 200;
+    const u = 1 - t;
+    return { x: u * u * p0x + 2 * u * t * cx + t * t * p1x, y: u * u * p0y + 2 * u * t * cy + t * t * p1y };
+  });
+}
+
+const onBorder = (b: Box, p: Point): boolean => {
+  const dx = Math.abs(p.x - b.cx) - b.w / 2;
+  const dy = Math.abs(p.y - b.cy) - b.h / 2;
+  return Math.max(dx, dy) < 0.01 && Math.max(dx, dy) > -0.01;
+};
+
+const strictlyInside = (b: Box, p: Point): boolean =>
+  Math.abs(p.x - b.cx) < b.w / 2 - 0.5 && Math.abs(p.y - b.cy) < b.h / 2 - 0.5;
 
 describe("polylineGeom", () => {
   const pts = [

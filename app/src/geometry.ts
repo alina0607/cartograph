@@ -149,17 +149,80 @@ function unit(from: Point, to: Point): Point {
   return { x: dx / len, y: dy / len };
 }
 
-// A quadratic curve from src box to dst box that passes through M = mid + bend at t=0.5.
-// Endpoints are aimed at M (not the raw control point) so the curve leaves each box
-// pointing where it visually goes; the control point is derived to make B(0.5) === M.
+// A curved connector: one quadratic curve from the centre of src to the centre of dst that
+// passes through M = mid + bend at t = 0.5 (the handle the user drags), cut where it leaves
+// src and where it last enters dst. Cutting the curve itself keeps each end on the border
+// with the curve arriving from outside, so an arrowhead never lies under a box, however the
+// boxes are dragged. (Aiming separate endpoints at M did not: once the boxes were close or M
+// sat beside a box, the curve reached the border from inside and the box hid the marker.)
 export function edgeGeom(src: Box, dst: Box, bend: [number, number]): EdgeGeom {
-  const mid = midpoint({ x: src.cx, y: src.cy }, { x: dst.cx, y: dst.cy });
+  const a: Point = { x: src.cx, y: src.cy };
+  const b: Point = { x: dst.cx, y: dst.cy };
+  const mid = midpoint(a, b);
   const M: Point = { x: mid.x + bend[0], y: mid.y + bend[1] };
+  const c: Point = { x: 2 * M.x - mid.x, y: 2 * M.y - mid.y }; // so that B(0.5) === M
+  const at = (t: number): Point => quad(a, c, b, t);
+  const t0 = crossing((t) => !inside(src, at(t)), 0, 1);
+  const t1 = crossing((t) => !inside(dst, at(t)), 1, 0);
+  if (t0 === null || t1 === null || t0 >= t1) return aimedGeom(src, dst, M); // boxes overlap
+  const p0 = at(t0);
+  const p1 = at(t1);
+  // The piece of a quadratic between t0 and t1 is itself quadratic; its control point is
+  // where the tangents at the two ends meet.
+  const d0 = quadTangent(a, c, b, t0);
+  const ctrl: Point = { x: p0.x + (d0.x * (t1 - t0)) / 2, y: p0.y + (d0.y * (t1 - t0)) / 2 };
+  const path = `M ${r(p0.x)} ${r(p0.y)} Q ${r(ctrl.x)} ${r(ctrl.y)} ${r(p1.x)} ${r(p1.y)}`;
+  const d1 = quadTangent(a, c, b, t1);
+  return { path, handle: M, p0, p1, dirStart: unit(ORIGIN, d0), dirEnd: unit(ORIGIN, d1) };
+}
+
+// The old construction, kept for boxes that overlap (the curve then never leaves one box
+// before entering the other): endpoints aimed at M from each centre.
+function aimedGeom(src: Box, dst: Box, M: Point): EdgeGeom {
   const p0 = borderPoint(src, M);
   const p1 = borderPoint(dst, M);
   const ctrl: Point = { x: 2 * M.x - (p0.x + p1.x) / 2, y: 2 * M.y - (p0.y + p1.y) / 2 };
   const path = `M ${r(p0.x)} ${r(p0.y)} Q ${r(ctrl.x)} ${r(ctrl.y)} ${r(p1.x)} ${r(p1.y)}`;
   return { path, handle: M, p0, p1, dirStart: unit(p0, ctrl), dirEnd: unit(ctrl, p1) };
+}
+
+const ORIGIN: Point = { x: 0, y: 0 };
+
+function quad(a: Point, c: Point, b: Point, t: number): Point {
+  const u = 1 - t;
+  return { x: u * u * a.x + 2 * u * t * c.x + t * t * b.x, y: u * u * a.y + 2 * u * t * c.y + t * t * b.y };
+}
+
+function quadTangent(a: Point, c: Point, b: Point, t: number): Point {
+  const u = 1 - t;
+  return { x: 2 * u * (c.x - a.x) + 2 * t * (b.x - c.x), y: 2 * u * (c.y - a.y) + 2 * t * (b.y - c.y) };
+}
+
+function inside(box: Box, p: Point): boolean {
+  return Math.abs(p.x - box.cx) < box.w / 2 && Math.abs(p.y - box.cy) < box.h / 2;
+}
+
+// Walking t from `from` toward `to`, the first t where `outside` becomes true, refined by
+// bisection to well under a pixel; null if it never does. Sampling first, then bisecting,
+// finds the first crossing even when the curve crosses the border more than once.
+function crossing(outside: (t: number) => boolean, from: number, to: number): number | null {
+  const steps = 128;
+  let prev = from;
+  for (let i = 1; i <= steps; i++) {
+    const t = from + ((to - from) * i) / steps;
+    if (outside(t)) {
+      let lo = prev; // still inside
+      let hi = t; // outside
+      for (let k = 0; k < 40; k++) {
+        const m = (lo + hi) / 2;
+        if (outside(m)) hi = m;
+        else lo = m;
+      }
+      return hi;
+    }
+    prev = t;
+  }
+  return null;
 }
 
 // An orthogonal connector along a path the router chose. Geometry no longer decides where a

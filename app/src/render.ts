@@ -3,10 +3,10 @@
 // innerHTML never detaches them.
 
 import { dims, edgeGeom, FONT, metrics, MONO_FONT, polylineGeom, type Box } from "./geometry";
-import { routeEdges } from "./route";
+import { routeEdges, type Route } from "./route";
 import { edgeKey, edgeStyle } from "./edge";
 import { renderGroups, renderImages, renderNotes } from "./renderItems";
-import type { Point, SeedNode } from "./model";
+import type { Point, SeedNode, SeedRelation } from "./model";
 import type { Store } from "./store";
 
 const { LINE_H, TITLE_H, PAD } = metrics;
@@ -85,34 +85,16 @@ export function renderScene(store: Store): string {
   const routes = routeEdges(boxes, store.seed.relations, edgeKey, (k) => store.edgeBend(k));
 
   const edgeParts: string[] = [];
+  const markParts: string[] = [];
   const handleParts: string[] = [];
   for (const rel of store.seed.relations) {
     const src = boxes.get(rel.src);
     const dst = boxes.get(rel.dst);
     if (!src || !dst) continue;
-    const key = edgeKey(rel);
-    const bend = store.edgeBend(key);
-    const route = routes.get(key);
-    const geom =
-      store.edgeModeFor(key) === "orthogonal" && route
-        ? polylineGeom(route.points, route.handle)
-        : edgeGeom(src, dst, bend);
-    const st = edgeStyle(rel);
-    const dash = st.dash ? ` stroke-dasharray="${st.dash}"` : "";
-    // One group per edge, tagged with its key and kind, so the legend can highlight it.
-    const parts = [
-      `<path d="${geom.path}" fill="none" stroke="${st.color}" stroke-width="1.8"${dash}/>`,
-    ];
-    if (st.markerEnd) parts.push(decoration(st.markerEnd, geom.p1, geom.dirEnd, st.color));
-    if (st.markerStart) parts.push(decoration(st.markerStart, geom.p0, geom.dirStart, st.color));
-    edgeParts.push(
-      `<g class="edge" data-edge="${attr(key)}" data-kind="${attr(rel.kind)}">${parts.join("")}</g>`,
-    );
-    handleParts.push(
-      `<circle class="eh" data-edge="${attr(key)}" cx="${round(geom.handle.x)}" cy="${round(
-        geom.handle.y,
-      )}" r="5"/>`,
-    );
+    const drawn = renderEdge(rel, src, dst, routes.get(edgeKey(rel)), store);
+    edgeParts.push(drawn.line);
+    if (drawn.marks) markParts.push(drawn.marks);
+    handleParts.push(drawn.handle);
   }
 
   const boxParts = visible.map((n) => renderBox(n, boxes.get(n.key)!, collapsedOf.get(n.key)!));
@@ -132,6 +114,7 @@ export function renderScene(store: Store): string {
     renderImages(store) +
     edgeParts.join("") +
     boxParts.join("") +
+    markParts.join("") + // end markers over the classes, so no box can hide one
     handleParts.join("") +
     renderNotes(store) + // sticky notes sit on top
     `</g></svg>`
@@ -282,6 +265,36 @@ function defs(): string {
     `<filter id="cardshadow" x="-25%" y="-25%" width="150%" height="150%">` +
     `<feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="#8b6fae" flood-opacity="0.16"/></filter>`;
   return `<defs>${cardGrad}${shadow}</defs>`;
+}
+
+// One relation as three SVG pieces: the line (drawn under the classes), its end markers (drawn
+// over them) and its bend handle. Both line and markers are tagged with the edge key and kind
+// so the legend highlights them together. A marker sits on a box border, so under the boxes
+// any box could hide it: the one it points at when the line arrives at a shallow angle, or
+// the other end when two boxes are dragged closer than a marker is long.
+function renderEdge(
+  rel: SeedRelation,
+  src: Box,
+  dst: Box,
+  route: Route | undefined,
+  store: Store,
+): { line: string; marks: string; handle: string } {
+  const key = edgeKey(rel);
+  const geom =
+    store.edgeModeFor(key) === "orthogonal" && route
+      ? polylineGeom(route.points, route.handle)
+      : edgeGeom(src, dst, store.edgeBend(key));
+  const st = edgeStyle(rel);
+  const dash = st.dash ? ` stroke-dasharray="${st.dash}"` : "";
+  const tag = `class="edge" data-edge="${attr(key)}" data-kind="${attr(rel.kind)}"`;
+  const line = `<g ${tag}><path d="${geom.path}" fill="none" stroke="${st.color}" stroke-width="1.8"${dash}/></g>`;
+  const marks: string[] = [];
+  if (st.markerEnd) marks.push(decoration(st.markerEnd, geom.p1, geom.dirEnd, st.color));
+  if (st.markerStart) marks.push(decoration(st.markerStart, geom.p0, geom.dirStart, st.color));
+  const handle =
+    `<circle class="eh" data-edge="${attr(key)}" cx="${round(geom.handle.x)}" ` +
+    `cy="${round(geom.handle.y)}" r="5"/>`;
+  return { line, marks: marks.length ? `<g ${tag} data-marks="1">${marks.join("")}</g>` : "", handle };
 }
 
 // Endpoint markers are drawn explicitly (not via <marker>) so they are always visible
