@@ -59,6 +59,12 @@ _NON_TYPES = frozenset(
 _MARKER_BASES = frozenset({"object", "ABC", "Generic", "Protocol"})
 # Standard-library metaclasses: a class deriving from one of these is itself a metaclass.
 _METACLASS_BASES = frozenset({"type", "ABCMeta", "EnumMeta", "EnumType"})
+# Methods that return the object they are called on (``torch.nn.Module`` and tensors), so
+# ``self.net = Net().to(device)`` still stores the ``Net`` it built. Any other chained call
+# may return something else (``Builder().build()``), so it is not seen through.
+_RETURNS_SELF = frozenset(
+    {"to", "cpu", "cuda", "eval", "train", "float", "half", "double", "bfloat16", "requires_grad_"}
+)
 
 
 def extract(source: str, module: str) -> tuple[list[Node], list[Reference]]:
@@ -246,6 +252,15 @@ def _constructions(
     composes: set[str] = set()
     constructs: set[str] = set()
     composed_as: dict[str, str] = {}
+
+    def owned(call: ast.Call) -> None:
+        name = _name_of(call.func)
+        if name:
+            composes.add(name)
+            q = _qualname(call, imports)
+            if q:
+                composed_as[name] = q
+
     for method in cls.body:
         if not isinstance(method, ast.FunctionDef | ast.AsyncFunctionDef):
             continue
@@ -254,15 +269,32 @@ def _constructions(
                 name = _name_of(sub.func)
                 if name and _is_ctor_name(name):
                     constructs.add(name)
+                for handed in _handed_to_base_init(sub):
+                    owned(handed)
             if isinstance(sub, ast.Assign | ast.AnnAssign):
-                call = _stored_construction(sub)
-                name = _name_of(call.func) if call is not None else None
-                if call is not None and name:
-                    composes.add(name)
-                    q = _qualname(call, imports)
-                    if q:
-                        composed_as[name] = q
+                stored = _stored_construction(sub)
+                if stored is not None:
+                    owned(stored)
     return composes, constructs, composed_as
+
+
+def _handed_to_base_init(call: ast.Call) -> list[ast.Call]:
+    """Constructions passed to ``super().__init__(...)``.
+
+    The base's initializer keeps its arguments on the same ``self``, so a subclass that
+    builds the object it hands over owns it, as if it had stored it itself:
+    ``super().__init__(config or Config())``.
+    """
+    func = call.func
+    if not (
+        isinstance(func, ast.Attribute)
+        and func.attr == "__init__"
+        and isinstance(func.value, ast.Call)
+        and _name_of(func.value.func) == "super"
+    ):
+        return []
+    args = [*call.args, *(kw.value for kw in call.keywords)]
+    return [built for arg in args if (built := _construction(arg)) is not None]
 
 
 def _stored_construction(node: ast.Assign | ast.AnnAssign) -> ast.Call | None:
@@ -279,11 +311,11 @@ def _construction(value: ast.expr) -> ast.Call | None:
 
     Besides ``Cls(...)`` itself this sees the default-or-given idioms, where the class still
     builds the object it holds whenever the caller passes none: ``x or Cls()`` and
-    ``Cls() if x is None else x``.
+    ``Cls() if x is None else x``; and calls that hand the same object back, such as
+    ``Cls(...).to(device)`` (``_RETURNS_SELF``).
     """
     if isinstance(value, ast.Call):
-        name = _name_of(value.func)
-        return value if name and _is_ctor_name(name) else None
+        return _constructor_call(value)
     branches: list[ast.expr] = []
     if isinstance(value, ast.BoolOp) and isinstance(value.op, ast.Or):
         branches = value.values
@@ -293,6 +325,16 @@ def _construction(value: ast.expr) -> ast.Call | None:
         call = _construction(branch)
         if call is not None:
             return call
+    return None
+
+
+def _constructor_call(call: ast.Call) -> ast.Call | None:
+    """``Cls(...)`` itself, or the ``Cls(...)`` under ``Cls(...).to(device)``; else None."""
+    name = _name_of(call.func)
+    if name and _is_ctor_name(name):
+        return call
+    if isinstance(call.func, ast.Attribute) and call.func.attr in _RETURNS_SELF:
+        return _construction(call.func.value)
     return None
 
 

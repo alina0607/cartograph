@@ -18,7 +18,9 @@ can reopen and keep as study notes.
   are next.
 - **Six UML relationships, resolved from real code.** Composition is distinguished
   from aggregation and association by how a type is actually used (owned vs. held vs.
-  referenced); transient constructions become dependency edges.
+  referenced); transient constructions become dependency edges. A member is owned when
+  the class builds it, in any method: `self.x = Cls()`, `x or Cls()`,
+  `Cls() if x is None else x`, `Cls().to(device)`, or `super().__init__(x or Cls())`.
 - **Laid out for a screen.** The first layout spreads sideways into a landscape board,
   and a board opens framed so every box is visible at once, however small, clear of the
   legend; **reset** frames it again.
